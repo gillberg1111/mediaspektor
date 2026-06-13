@@ -477,9 +477,10 @@ document.addEventListener("DOMContentLoaded", () => {
         })
         .catch(err => {
             console.error("Action fetch failed:", err);
-            showToast("Network error executing action.", "error");
         });
-    }    // -----------------------------------------------------------------------
+    });
+
+    // -----------------------------------------------------------------------
     // Tab 4: Settings Logic
     // -----------------------------------------------------------------------
     
