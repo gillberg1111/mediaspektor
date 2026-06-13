@@ -122,18 +122,249 @@
 
             <!-- Tab: Settings -->
             <section id="tab-settings" class="tab-pane">
-                <div class="panel settings-panel">
-                    <div class="panel-header">
-                        <h3><i class="fa-solid fa-gear"></i> Configuration Editor</h3>
-                        <button id="btn-save-config" class="btn btn-primary">Save Changes</button>
-                    </div>
-                    <div class="panel-body">
-                        <div class="form-group">
-                            <label for="config-editor">YAML Configuration</label>
-                            <textarea id="config-editor" class="config-textarea" rows="22" placeholder="# Loading configuration..."></textarea>
+                <form id="settings-form">
+                    <!-- Section: Media Servers -->
+                    <div class="panel settings-section" style="margin-bottom: 2rem;">
+                        <div class="panel-header">
+                            <h3><i class="fa-solid fa-server"></i> Media Servers</h3>
+                        </div>
+                        <div class="panel-body grid-2">
+                            <!-- Plex -->
+                            <div class="card-glass settings-card-group">
+                                <div class="group-header">
+                                    <h4>Plex Media Server</h4>
+                                    <label class="switch">
+                                        <input type="checkbox" id="srv-plex-enabled">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="form-group-grid">
+                                    <div class="form-group">
+                                        <label for="srv-plex-url">Server URL</label>
+                                        <input type="text" id="srv-plex-url" placeholder="http://localhost:32400">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="srv-plex-token">Token</label>
+                                        <input type="password" id="srv-plex-token" placeholder="Plex Token">
+                                    </div>
+                                    <div class="form-group" style="grid-column: 1/-1;">
+                                        <label for="srv-plex-libs">Target Libraries (comma separated)</label>
+                                        <input type="text" id="srv-plex-libs" placeholder="Movies, TV Shows">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Jellyfin -->
+                            <div class="card-glass settings-card-group">
+                                <div class="group-header">
+                                    <h4>Jellyfin Server</h4>
+                                    <label class="switch">
+                                        <input type="checkbox" id="srv-jellyfin-enabled">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="form-group-grid">
+                                    <div class="form-group">
+                                        <label for="srv-jellyfin-url">Server URL</label>
+                                        <input type="text" id="srv-jellyfin-url" placeholder="http://localhost:8096">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="srv-jellyfin-key">API Key</label>
+                                        <input type="password" id="srv-jellyfin-key" placeholder="Jellyfin API Key">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="srv-jellyfin-user">User ID</label>
+                                        <input type="text" id="srv-jellyfin-user" placeholder="Jellyfin User ID">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="srv-jellyfin-libs">Target Libraries</label>
+                                        <input type="text" id="srv-jellyfin-libs" placeholder="Movies, TV Shows">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Emby -->
+                            <div class="card-glass settings-card-group">
+                                <div class="group-header">
+                                    <h4>Emby Server</h4>
+                                    <label class="switch">
+                                        <input type="checkbox" id="srv-emby-enabled">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="form-group-grid">
+                                    <div class="form-group">
+                                        <label for="srv-emby-url">Server URL</label>
+                                        <input type="text" id="srv-emby-url" placeholder="http://localhost:8096">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="srv-emby-key">API Key</label>
+                                        <input type="password" id="srv-emby-key" placeholder="Emby API Key">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="srv-emby-user">User ID</label>
+                                        <input type="text" id="srv-emby-user" placeholder="Emby User ID">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="srv-emby-libs">Target Libraries</label>
+                                        <input type="text" id="srv-emby-libs" placeholder="Movies, TV Shows">
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
+
+                    <!-- Section: Archival Rules & Safety -->
+                    <div class="panel settings-section" style="margin-bottom: 2rem;">
+                        <div class="panel-header">
+                            <h3><i class="fa-solid fa-scale-balanced"></i> Archival Rules & Safety</h3>
+                        </div>
+                        <div class="panel-body grid-2">
+                            <!-- Rules -->
+                            <div class="card-glass settings-card-group">
+                                <div class="group-header">
+                                    <h4>Exclusions & Thresholds</h4>
+                                </div>
+                                <div class="form-group-grid">
+                                    <div class="form-group">
+                                        <label for="rule-min-age">Minimum Watch Age (Days)</label>
+                                        <input type="number" id="rule-min-age" min="0" placeholder="7">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="rule-threshold">Dummy Threshold (MB)</label>
+                                        <input type="number" id="rule-threshold" min="0" placeholder="15">
+                                    </div>
+                                    <div class="form-group" style="grid-column: 1/-1;">
+                                        <label for="rule-exclude-labels">Exclude Labels (comma separated)</label>
+                                        <input type="text" id="rule-exclude-labels" placeholder="keep">
+                                    </div>
+                                    <div class="form-group" style="grid-column: 1/-1;">
+                                        <label for="rule-exclude-genres">Exclude Genres (comma separated)</label>
+                                        <input type="text" id="rule-exclude-genres" placeholder="Documentary">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Safety -->
+                            <div class="card-glass settings-card-group">
+                                <div class="group-header">
+                                    <h4>Safety & Backups</h4>
+                                </div>
+                                <div class="form-group-grid">
+                                    <div class="form-group flex-row-switch">
+                                        <label for="safety-dry-run">Dry-Run Mode (Simulation only)</label>
+                                        <label class="switch">
+                                            <input type="checkbox" id="safety-dry-run">
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="form-group flex-row-switch">
+                                        <label for="safety-backup">Backup Original Media Files</label>
+                                        <label class="switch">
+                                            <input type="checkbox" id="safety-backup">
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="form-group" style="grid-column: 1/-1;">
+                                        <label for="safety-backup-dir">Backup Storage Directory</label>
+                                        <input type="text" id="safety-backup-dir" placeholder="/path/to/backup/dir">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section: Integrations -->
+                    <div class="panel settings-section" style="margin-bottom: 2rem;">
+                        <div class="panel-header">
+                            <h3><i class="fa-solid fa-robot"></i> Integrations</h3>
+                        </div>
+                        <div class="panel-body grid-2">
+                            <!-- Radarr -->
+                            <div class="card-glass settings-card-group">
+                                <div class="group-header">
+                                    <h4>Radarr Client</h4>
+                                    <label class="switch">
+                                        <input type="checkbox" id="int-radarr-enabled">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="form-group-grid">
+                                    <div class="form-group">
+                                        <label for="int-radarr-url">Radarr URL</label>
+                                        <input type="text" id="int-radarr-url" placeholder="http://localhost:7878">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="int-radarr-key">API Key</label>
+                                        <input type="password" id="int-radarr-key" placeholder="Radarr Key">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Sonarr -->
+                            <div class="card-glass settings-card-group">
+                                <div class="group-header">
+                                    <h4>Sonarr Client</h4>
+                                    <label class="switch">
+                                        <input type="checkbox" id="int-sonarr-enabled">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="form-group-grid">
+                                    <div class="form-group">
+                                        <label for="int-sonarr-url">Sonarr URL</label>
+                                        <input type="text" id="int-sonarr-url" placeholder="http://localhost:8989">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="int-sonarr-key">API Key</label>
+                                        <input type="password" id="int-sonarr-key" placeholder="Sonarr Key">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section: Poster Aesthetics -->
+                    <div class="panel settings-section" style="margin-bottom: 2rem;">
+                        <div class="panel-header">
+                            <h3><i class="fa-solid fa-palette"></i> Poster Overlay Aesthetics</h3>
+                        </div>
+                        <div class="panel-body grid-2">
+                            <div class="card-glass settings-card-group" style="grid-column: 1/-1;">
+                                <div class="group-header">
+                                    <h4>Banner Overlay Settings</h4>
+                                    <label class="switch">
+                                        <input type="checkbox" id="aes-overlay-enabled">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="form-group-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                                    <div class="form-group">
+                                        <label for="aes-banner-color">Banner Color RGBA</label>
+                                        <input type="text" id="aes-banner-color" placeholder="20, 20, 20, 204">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="aes-border-color">Border Color RGBA</label>
+                                        <input type="text" id="aes-border-color" placeholder="212, 175, 55, 255">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="aes-font-name">Font Family Name</label>
+                                        <input type="text" id="aes-font-name" placeholder="Arial">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="aes-font-size">Font Size Ratio</label>
+                                        <input type="number" id="aes-font-size" step="0.001" placeholder="0.045">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Save Actions -->
+                    <div class="form-actions-panel">
+                        <button type="button" id="btn-save-settings" class="btn btn-primary btn-lg"><i class="fa-solid fa-floppy-disk"></i> Save Settings Configuration</button>
+                    </div>
+                </form>
             </section>
         </main>
     </div>

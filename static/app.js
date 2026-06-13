@@ -479,57 +479,146 @@ document.addEventListener("DOMContentLoaded", () => {
             console.error("Action fetch failed:", err);
             showToast("Network error executing action.", "error");
         });
-    });
-
-    // -----------------------------------------------------------------------
+    }    // -----------------------------------------------------------------------
     // Tab 4: Settings Logic
     // -----------------------------------------------------------------------
     
     function loadSettings() {
-        const editor = document.getElementById("config-editor");
-        editor.value = "# Loading configuration from server...";
-        
         fetch("/api/config")
             .then(res => res.json())
             .then(config => {
-                // Config is returned as JSON, we convert it back to YAML
-                // Using js-yaml is not necessary if we let the API serve it, but wait!
-                // To keep it simple, we can load the raw YAML from an API endpoint,
-                // or serialize JSON to YAML in Python.
-                // Since our python GET /api/config returns JSON, let's verify if we can
-                // just edit JSON or write a YAML converter.
-                // Wait! Let's fetch /api/config which returns JSON.
-                // To make editing easy, let's represent it as a JSON text editor or YAML.
-                // If we want a YAML string, let's serialize it in Python or JavaScript.
-                // Actually, python has PyYAML which makes it trivial to return YAML string!
-                // Let's check: our FastAPI endpoint `get_config` returns JSON because we just return `spektor.config`.
-                // Let's modify the FastAPI endpoint `/api/config` in our thoughts to see if we can support raw text.
-                // Wait! We can just serialize/deserialize JSON in JavaScript, OR we can format it as pretty JSON:
-                editor.value = JSON.stringify(config, null, 4);
-                // Let's change the textarea label in index.html dynamically to "JSON Configuration"!
-                document.querySelector("label[for='config-editor']").textContent = "JSON Configuration";
+                // Populate Servers
+                const plex = (config.servers || []).find(s => s.type === "plex") || {};
+                const jellyfin = (config.servers || []).find(s => s.type === "jellyfin") || {};
+                const emby = (config.servers || []).find(s => s.type === "emby") || {};
+
+                document.getElementById("srv-plex-enabled").checked = !!plex.enabled;
+                document.getElementById("srv-plex-url").value = plex.url || "";
+                document.getElementById("srv-plex-token").value = plex.token || "";
+                document.getElementById("srv-plex-libs").value = (plex.libraries || []).join(", ");
+
+                document.getElementById("srv-jellyfin-enabled").checked = !!jellyfin.enabled;
+                document.getElementById("srv-jellyfin-url").value = jellyfin.url || "";
+                document.getElementById("srv-jellyfin-key").value = jellyfin.api_key || "";
+                document.getElementById("srv-jellyfin-user").value = jellyfin.user_id || "";
+                document.getElementById("srv-jellyfin-libs").value = (jellyfin.libraries || []).join(", ");
+
+                document.getElementById("srv-emby-enabled").checked = !!emby.enabled;
+                document.getElementById("srv-emby-url").value = emby.url || "";
+                document.getElementById("srv-emby-key").value = emby.api_key || "";
+                document.getElementById("srv-emby-user").value = emby.user_id || "";
+                document.getElementById("srv-emby-libs").value = (emby.libraries || []).join(", ");
+
+                // Populate Rules
+                const rules = config.rules || {};
+                document.getElementById("rule-min-age").value = rules.min_age_days !== undefined ? rules.min_age_days : 7;
+                document.getElementById("rule-threshold").value = rules.dummy_threshold_mb !== undefined ? rules.dummy_threshold_mb : 15;
+                document.getElementById("rule-exclude-labels").value = (rules.exclude_labels || []).join(", ");
+                document.getElementById("rule-exclude-genres").value = (rules.exclude_genres || []).join(", ");
+
+                // Populate Safety
+                const safety = config.safety || {};
+                document.getElementById("safety-dry-run").checked = safety.dry_run !== undefined ? !!safety.dry_run : true;
+                document.getElementById("safety-backup").checked = !!safety.backup_original_media;
+                document.getElementById("safety-backup-dir").value = safety.backup_directory || "";
+
+                // Populate Integrations
+                const integrations = config.integrations || {};
+                const radarr = integrations.radarr || {};
+                const sonarr = integrations.sonarr || {};
+
+                document.getElementById("int-radarr-enabled").checked = !!radarr.enabled;
+                document.getElementById("int-radarr-url").value = radarr.url || "";
+                document.getElementById("int-radarr-key").value = radarr.api_key || "";
+
+                document.getElementById("int-sonarr-enabled").checked = !!sonarr.enabled;
+                document.getElementById("int-sonarr-url").value = sonarr.url || "";
+                document.getElementById("int-sonarr-key").value = sonarr.api_key || "";
+
+                // Populate Aesthetics
+                const aesthetics = config.aesthetics || {};
+                document.getElementById("aes-overlay-enabled").checked = aesthetics.enable_poster_overlay !== undefined ? !!aesthetics.enable_poster_overlay : true;
+                document.getElementById("aes-banner-color").value = (aesthetics.banner_color || [20, 20, 20, 204]).join(", ");
+                document.getElementById("aes-border-color").value = (aesthetics.border_color || [212, 175, 55, 255]).join(", ");
+                document.getElementById("aes-font-name").value = aesthetics.font_name || "Arial";
+                document.getElementById("aes-font-size").value = aesthetics.font_size_ratio !== undefined ? aesthetics.font_size_ratio : 0.045;
             })
             .catch(err => {
                 console.error("Failed to load settings:", err);
-                editor.value = "# Error loading configuration.";
+                showToast("Failed to fetch settings from server.", "error");
             });
     }
 
-    document.getElementById("btn-save-config").addEventListener("click", () => {
-        const editor = document.getElementById("config-editor");
-        let parsedConfig = null;
-        
-        try {
-            parsedConfig = JSON.parse(editor.value);
-        } catch (exc) {
-            showToast("Invalid JSON syntax. Please correct it before saving.", "error");
+    document.getElementById("btn-save-settings").addEventListener("click", () => {
+        // Build the configuration structure back
+        const config = {
+            servers: [
+                {
+                    type: "plex",
+                    enabled: document.getElementById("srv-plex-enabled").checked,
+                    url: document.getElementById("srv-plex-url").value.trim(),
+                    token: document.getElementById("srv-plex-token").value.trim(),
+                    libraries: document.getElementById("srv-plex-libs").value.split(",").map(s => s.trim()).filter(Boolean)
+                },
+                {
+                    type: "jellyfin",
+                    enabled: document.getElementById("srv-jellyfin-enabled").checked,
+                    url: document.getElementById("srv-jellyfin-url").value.trim(),
+                    api_key: document.getElementById("srv-jellyfin-key").value.trim(),
+                    user_id: document.getElementById("srv-jellyfin-user").value.trim(),
+                    libraries: document.getElementById("srv-jellyfin-libs").value.split(",").map(s => s.trim()).filter(Boolean)
+                },
+                {
+                    type: "emby",
+                    enabled: document.getElementById("srv-emby-enabled").checked,
+                    url: document.getElementById("srv-emby-url").value.trim(),
+                    api_key: document.getElementById("srv-emby-key").value.trim(),
+                    user_id: document.getElementById("srv-emby-user").value.trim(),
+                    libraries: document.getElementById("srv-emby-libs").value.split(",").map(s => s.trim()).filter(Boolean)
+                }
+            ],
+            rules: {
+                min_age_days: parseInt(document.getElementById("rule-min-age").value) || 0,
+                exclude_labels: document.getElementById("rule-exclude-labels").value.split(",").map(s => s.trim()).filter(Boolean),
+                exclude_genres: document.getElementById("rule-exclude-genres").value.split(",").map(s => s.trim()).filter(Boolean),
+                dummy_threshold_mb: parseInt(document.getElementById("rule-threshold").value) || 0
+            },
+            aesthetics: {
+                enable_poster_overlay: document.getElementById("aes-overlay-enabled").checked,
+                banner_color: document.getElementById("aes-banner-color").value.split(",").map(s => parseInt(s.trim())).filter(n => !isNaN(n)),
+                border_color: document.getElementById("aes-border-color").value.split(",").map(s => parseInt(s.trim())).filter(n => !isNaN(n)),
+                font_name: document.getElementById("aes-font-name").value.trim(),
+                font_size_ratio: parseFloat(document.getElementById("aes-font-size").value) || 0.045
+            },
+            integrations: {
+                radarr: {
+                    enabled: document.getElementById("int-radarr-enabled").checked,
+                    url: document.getElementById("int-radarr-url").value.trim(),
+                    api_key: document.getElementById("int-radarr-key").value.trim()
+                },
+                sonarr: {
+                    enabled: document.getElementById("int-sonarr-enabled").checked,
+                    url: document.getElementById("int-sonarr-url").value.trim(),
+                    api_key: document.getElementById("int-sonarr-key").value.trim()
+                }
+            },
+            safety: {
+                dry_run: document.getElementById("safety-dry-run").checked,
+                backup_original_media: document.getElementById("safety-backup").checked,
+                backup_directory: document.getElementById("safety-backup-dir").value.trim()
+            }
+        };
+
+        // Basic verification
+        if (config.aesthetics.banner_color.length !== 4 || config.aesthetics.border_color.length !== 4) {
+            showToast("Banner and border colors must be 4 numbers (RGBA, e.g. 255, 255, 255, 255).", "warning");
             return;
         }
 
         fetch("/api/config", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ config: parsedConfig })
+            body: JSON.stringify({ config })
         })
         .then(res => res.json())
         .then(data => {

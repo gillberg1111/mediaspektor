@@ -900,36 +900,157 @@ body {
 .form-group {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.6rem;
 }
 
 .form-group label {
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    margin-bottom: 0.2rem;
 }
 
-.config-textarea {
+/* Form Input elements */
+input[type="text"],
+input[type="password"],
+input[type="number"] {
     width: 100%;
-    background: rgba(5, 5, 8, 0.9);
+    background: rgba(5, 5, 8, 0.45);
     border: 1px solid var(--border-color);
-    border-radius: 14px;
-    padding: 1.5rem;
-    color: #f1f5f9;
-    font-family: 'Fira Code', 'Courier New', Courier, monospace;
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    color: #ffffff;
+    font-family: var(--font-body);
     font-size: 0.9rem;
-    line-height: 1.7;
-    resize: none;
-    box-shadow: inset 0 2px 8px rgba(0,0,0,0.8);
     transition: var(--transition-normal);
 }
 
-.config-textarea:focus {
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 20px rgba(124, 58, 237, 0.25), inset 0 2px 8px rgba(0,0,0,0.9);
+    box-shadow: 0 0 15px rgba(124, 58, 237, 0.25), inset 0 1px 1px 0 rgba(255, 255, 255, 0.05);
+    background: rgba(20, 20, 30, 0.45);
+}
+
+.grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.5rem;
+}
+
+.settings-card-group {
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    transition: var(--transition-normal);
+}
+
+.settings-card-group:hover {
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.group-header h4 {
+    font-family: var(--font-heading);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.form-group-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+/* Switch styling */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255, 255, 255, 0.08);
+    transition: .3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 24px;
+    border: 1px solid var(--border-color);
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background-color: #ffffff;
+    transition: .3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+input:checked + .slider {
+    background-color: var(--success);
+    border-color: rgba(16, 185, 129, 0.35);
+}
+
+input:checked + .slider:before {
+    transform: translateX(20px);
+}
+
+.flex-row-switch {
+    display: flex;
+    flex-direction: row !important;
+    justify-content: space-between;
+    align-items: center;
+    grid-column: 1/-1;
+    padding: 0.5rem 0;
+}
+
+.flex-row-switch label {
+    margin-bottom: 0;
+}
+
+.form-actions-panel {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1.5rem;
+}
+
+.btn-lg {
+    padding: 1rem 2rem;
+    font-size: 1.05rem;
+    border-radius: 12px;
 }
 
 /* Toast Notifications Container & Alert Popups */
