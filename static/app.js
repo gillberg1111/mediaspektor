@@ -671,8 +671,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 // Populate Aesthetics
                 const aesthetics = config.aesthetics || {};
                 document.getElementById("aes-overlay-enabled").checked = aesthetics.enable_poster_overlay !== undefined ? !!aesthetics.enable_poster_overlay : true;
-                document.getElementById("aes-banner-color").value = (aesthetics.banner_color || [20, 20, 20, 204]).join(", ");
-                document.getElementById("aes-border-color").value = (aesthetics.border_color || [212, 175, 55, 255]).join(", ");
+                document.getElementById("aes-banner-color").value = (aesthetics.banner_color || [8, 11, 10, 204]).join(", ");
+                document.getElementById("aes-border-color").value = (aesthetics.border_color || [62, 207, 142, 255]).join(", ");
                 document.getElementById("aes-font-name").value = aesthetics.font_name || "Arial";
                 document.getElementById("aes-font-size").value = aesthetics.font_size_ratio !== undefined ? aesthetics.font_size_ratio : 0.045;
             })

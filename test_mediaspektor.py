@@ -95,8 +95,8 @@ class TestPosterOverlay(unittest.TestCase):
         self.config = {
             "aesthetics": {
                 "enable_poster_overlay": True,
-                "banner_color": [20, 20, 20, 204],
-                "border_color": [212, 175, 55, 255],
+                "banner_color": [8, 11, 10, 204],
+                "border_color": [62, 207, 142, 255],
                 "font_name": "Arial",
                 "font_size_ratio": 0.05
             }

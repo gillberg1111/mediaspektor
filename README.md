@@ -4,7 +4,7 @@
 
 **MediaSpektor** is a media-server-agnostic utility designed to help administrators reclaim disk space from their Plex, Jellyfin, or Emby libraries. It replaces watched media files (Movies and TV episodes) with tiny, valid dummy video files (approx. 20KB). This reclaims disk space while keeping watch history, metadata, and browseability fully intact. 
 
-To visually flag archived items, MediaSpektor synthesizes and uploads a premium glassmorphic banner overlay on the media poster (e.g., `ARCHIVED • 8.4 GB SAVED`) and integrates with Radarr and Sonarr to prevent automatic re-downloads.
+To visually flag archived items, MediaSpektor synthesizes and uploads a clean translucent banner overlay on the media poster (e.g., `ARCHIVED • 8.4 GB SAVED`) and integrates with Radarr and Sonarr to prevent automatic re-downloads.
 
 ---
 
@@ -13,7 +13,7 @@ To visually flag archived items, MediaSpektor synthesizes and uploads a premium 
 - 🔗 **Cross-Server State Propagation**: Run Plex, Jellyfin, and Emby against one shared library? Archive once, badge everywhere. MediaSpektor matches the same physical item across every enabled server — by file path first, falling back to external IDs (TMDB → IMDB → TVDB) — then replaces the file once and propagates the poster overlay and archived state to each server. Restore fans out the same way.
 - 🎬 **TMDB ID Bridge** *(optional)*: When servers store different ID systems (e.g. Plex has only IMDB while Jellyfin has only TMDB), an optional TMDB API key normalizes IDs across systems so matching still succeeds. Without a key, matching gracefully falls back to file path + direct ID overlap.
 - 🎥 **Valid Dummy Containers**: Programmatic generation of compliant, non-crashing `.mp4`, `.mkv`, and `.avi` template containers.
-- 🎨 **Glassmorphic Poster Badging**: Adds a sleek translucent banner at the bottom of posters detailing reclaimed space using Pillow.
+- 🎨 **Poster Badging**: Adds a sleek translucent banner (mint accent) at the bottom of posters detailing reclaimed space using Pillow.
 - 🤖 **\*Arr Integrations**: Automatically unmonitors movies in Radarr and episodes in Sonarr to prevent automatic re-downloads.
 - 🛡️ **Safety & Recovery**: 
   - **Dry-run mode** by default to inspect candidates and potential savings safely.
@@ -137,8 +137,8 @@ rules:
 
 aesthetics:
   enable_poster_overlay: true
-  banner_color: [20, 20, 20, 204]  # RGBA (dark gray, 80% opacity)
-  border_color: [212, 175, 55, 255] # RGBA (Gold)
+  banner_color: [8, 11, 10, 204]  # RGBA (near-black, 80% opacity)
+  border_color: [62, 207, 142, 255] # RGBA (mint accent)
   font_name: "Arial"
   font_size_ratio: 0.045       # Font size relative to poster height
 
@@ -167,7 +167,7 @@ safety:
 
 ## Self-Hosted Web Dashboard
 
-MediaSpektor features a premium, self-hosted glassmorphic dark-themed web dashboard where you can browse watched/unwatched movies and TV shows, explore seasons/episodes, view live backend logging, inspect storage reclamation statistics, and manually initiate "Spektor" (archive/replace) or "Restore" actions.
+MediaSpektor features a sleek, self-hosted dark web dashboard where you can browse watched/unwatched movies and TV shows, explore seasons/episodes, view live backend logging, inspect storage reclamation statistics, and manually initiate "Spektor" (archive/replace) or "Restore" actions.
 
 ### Running the Web Dashboard
 

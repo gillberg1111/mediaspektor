@@ -1857,9 +1857,9 @@ class PosterOverlay:
     def __init__(self, config: dict) -> None:
         aest = config.get("aesthetics", {})
         self.enabled = aest.get("enable_poster_overlay", True)
-        self.banner_color = tuple(aest.get("banner_color", [20, 20, 20, 204]))
+        self.banner_color = tuple(aest.get("banner_color", [8, 11, 10, 204]))
         self.border_color = tuple(
-            aest.get("border_color", [212, 175, 55, 255])
+            aest.get("border_color", [62, 207, 142, 255])
         )
         self.font_name = aest.get("font_name", "Arial")
         self.font_size_ratio = aest.get("font_size_ratio", 0.045)

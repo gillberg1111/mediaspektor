@@ -5,6 +5,11 @@ All notable changes to **MediaSpektor** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to a simple `v0.x` release line.
 
+## [v0.11] - 2026-06-13
+
+### Changed
+- **Poster overlay matches the brand.** The "ARCHIVED • X GB SAVED" badge now uses the mint accent (`#3ECF8E`) for its border and near-black (`#080B0A`) for the banner fill, replacing the old gold/dark-gray scheme. Updated the `PosterOverlay` defaults, `config.yaml.example`, and the Settings color placeholders, and refreshed README wording (dropped the "premium glassmorphic" language).
+
 ## [v0.10] - 2026-06-13
 
 ### Added
