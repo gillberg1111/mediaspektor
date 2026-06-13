@@ -229,6 +229,55 @@ class TestOrchestratorFilter(unittest.TestCase):
         self.assertEqual(filtered[0]["title"], "OK Movie")
 
 
+class TestOrchestratorArchiveSafety(unittest.TestCase):
+    def setUp(self):
+        self.temp_config = tempfile.NamedTemporaryFile(suffix=".yaml", delete=False)
+        self.temp_config.close()
+
+    def tearDown(self):
+        if os.path.exists(self.temp_config.name):
+            os.unlink(self.temp_config.name)
+
+    @patch("mediaspektor.Database")
+    def test_archive_downgrades_to_dry_run_when_allow_auto_is_false(self, mock_db):
+        config_data = {
+            "servers": [],
+            "rules": {},
+            "safety": {
+                "dry_run": False,
+                "allow_automated_archival": False
+            }
+        }
+        import yaml
+        with open(self.temp_config.name, "w") as f:
+            yaml.safe_dump(config_data, f)
+            
+        spektor = MediaSpektor(self.temp_config.name)
+        spektor.db.item_exists.return_value = False
+        
+        mock_server = MagicMock()
+        mock_server.server_type = "plex"
+        mock_server.config = {"url": "http://mock-plex", "libraries": ["Movies"]}
+        mock_server.get_watched_items.return_value = [{
+            "id": "1",
+            "title": "Test Movie",
+            "file_path": "/path/movie.mp4",
+            "original_size": 100 * 1024 * 1024,
+            "type": "movie",
+            "last_watched": datetime.now() - timedelta(days=10),
+            "genres": [],
+            "labels": []
+        }]
+        
+        spektor.servers = [mock_server]
+        
+        with patch("os.path.exists", return_value=True), \
+             patch("os.path.splitext", return_value=("/path/movie", ".mp4")):
+            results = spektor.archive(dry_run=False)
+            self.assertIn("Test Movie", results["archived"])
+            self.assertEqual(mock_server.download_poster.call_count, 0)
+
+
 class TestIntegrations(unittest.TestCase):
     @patch("requests.get")
     @patch("requests.put")

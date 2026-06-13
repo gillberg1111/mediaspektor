@@ -618,6 +618,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 document.getElementById("safety-dry-run").checked = safety.dry_run !== undefined ? !!safety.dry_run : true;
                 document.getElementById("safety-backup").checked = !!safety.backup_original_media;
                 document.getElementById("safety-backup-dir").value = safety.backup_directory || "";
+                document.getElementById("safety-allow-auto").checked = !!safety.allow_automated_archival;
 
                 // Populate Integrations
                 const integrations = config.integrations || {};
@@ -644,6 +645,21 @@ document.addEventListener("DOMContentLoaded", () => {
                 console.error("Failed to load settings:", err);
                 showToast("Failed to fetch settings from server.", "error");
             });
+    }
+
+    // Safety auto-delete confirm dialog
+    const safetyAllowAuto = document.getElementById("safety-allow-auto");
+    if (safetyAllowAuto) {
+        safetyAllowAuto.addEventListener("change", (e) => {
+            if (e.target.checked) {
+                const confirmed = confirm(
+                    "WARNING: Enabling Automated Archiving will allow scheduled background scripts (like cron jobs) to automatically overwrite watched media files with 1-second dummies on your hard drive without asking for confirmation.\\n\\nAre you absolutely sure you want to turn this option ON?"
+                );
+                if (!confirmed) {
+                    e.target.checked = false;
+                }
+            }
+        });
     }
 
     document.getElementById("btn-save-settings").addEventListener("click", () => {
@@ -702,7 +718,8 @@ document.addEventListener("DOMContentLoaded", () => {
             safety: {
                 dry_run: document.getElementById("safety-dry-run").checked,
                 backup_original_media: document.getElementById("safety-backup").checked,
-                backup_directory: document.getElementById("safety-backup-dir").value.trim()
+                backup_directory: document.getElementById("safety-backup-dir").value.trim(),
+                allow_automated_archival: document.getElementById("safety-allow-auto").checked
             }
         };
 

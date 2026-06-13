@@ -47,6 +47,7 @@ safety:
   dry_run: true
   backup_original_media: false
   backup_directory: "/path/to/cold/storage/backup"
+  allow_automated_archival: false
 
 security:
   enabled: true

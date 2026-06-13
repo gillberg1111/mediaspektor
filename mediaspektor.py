@@ -1851,6 +1851,14 @@ class MediaSpektor:
 
     def archive(self, dry_run: bool = False) -> dict[str, Any]:
         """Run the full archival process."""
+        safety_cfg = self.config.get("safety", {})
+        allow_auto = safety_cfg.get("allow_automated_archival", False)
+        if not dry_run and not allow_auto:
+            logger.warning(
+                "Automated file deletion/archiving is disabled (safety.allow_automated_archival is Off). Forcing DRY-RUN simulation mode."
+            )
+            dry_run = True
+
         results: dict[str, Any] = {"archived": [], "errors": [], "skipped": []}
 
         for server in self.servers:
