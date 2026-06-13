@@ -474,6 +474,7 @@ body {
     transform: translateY(-50%);
     color: var(--text-muted);
     font-size: 1.05rem;
+    pointer-events: none; /* Let click events pass to the input field */
 }
 
 .search-input {
@@ -481,7 +482,7 @@ body {
     background: var(--bg-surface);
     border: 1px solid var(--border-color);
     border-radius: 14px;
-    padding: 1.1rem 1.25rem 1.1rem 3.25rem;
+    padding: 1.1rem 1.25rem 1.1rem 3.5rem !important; /* Forces left padding to avoid icon overlap */
     color: #ffffff;
     font-size: 0.95rem;
     transition: var(--transition-normal);
@@ -1042,9 +1043,18 @@ input:checked + .slider:before {
 }
 
 .form-actions-panel {
+    position: sticky;
+    bottom: 2rem;
     display: flex;
     justify-content: flex-end;
     margin-top: 1.5rem;
+    z-index: 50;
+    pointer-events: none; /* Let scroll events pass through empty space of the panel */
+}
+
+.form-actions-panel button {
+    pointer-events: auto; /* Re-enable pointer events for the button itself */
+    box-shadow: 0 10px 30px rgba(124, 58, 237, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 .btn-lg {
@@ -1200,5 +1210,17 @@ input:checked + .slider:before {
     border-color: var(--primary);
     box-shadow: 0 0 0 3px var(--primary-glow);
     outline: none;
+}
+
+/* Version Footer Styling */
+.version-footer {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    padding-top: 4rem;
+    padding-bottom: 6rem; /* Large bottom padding so the floating save button doesn't cover content when scrolled to the end */
+    opacity: 0.55;
 }
 
