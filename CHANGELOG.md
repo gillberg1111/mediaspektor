@@ -5,6 +5,18 @@ All notable changes to **MediaSpektor** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to a simple `v0.x` release line.
 
+## [v0.8] - 2026-06-13
+
+### Fixed
+- **Spektor/Restore 422** — `/api/spektor` and `/api/restore` no longer reject Plex items. `ActionReq.item_id` now accepts numeric ids (Plex ratingKeys arrive as JSON numbers) and coerces them to strings.
+- **Duplicate movies/shows** — when multiple servers point at one shared library, `/api/movies` and `/api/shows` now dedupe across servers (movies by file path → title+year, shows by title+year), keeping one card and preferring an already-archived one.
+- **Emby showed nothing** — `EmbyConnector` now resolves the configured `user_id` (a username *or* a GUID) to the real user GUID via Emby's `/Users` list at startup, so user-scoped queries stop 500-ing.
+- **Library-name matching** — Jellyfin/Emby library lookups are now case-insensitive and log the available library names on a miss, so a configured name that doesn't match is never silent.
+- **Search box stuck after tab switch** — switching tabs now clears the Movies/TV Shows search fields, so returning to a tab shows the full list with an empty, editable search box (the Refresh button still preserves an active query).
+
+### Changed
+- Corrected the default Target Libraries per server to match each platform's out-of-the-box naming: Plex `Movies, TV Shows`, Jellyfin `Movies, Shows`, Emby `Movies, TV Shows` (placeholders and `config.yaml.example`).
+
 ## [v0.7] - 2026-06-12
 
 ### Added

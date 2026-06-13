@@ -522,6 +522,13 @@ class TestFastAPI(unittest.TestCase):
             self.assertEqual(resp.status_code, 200)
             self.assertEqual(resp.json()["success"], True)
 
+    def test_trigger_spektor_accepts_numeric_item_id(self):
+        # Plex ratingKeys arrive as JSON numbers; must not 422 (regression).
+        with patch.object(self.spektor, "archive_item") as mock_archive:
+            resp = self.client.post("/api/spektor", json={"server_type": "plex", "item_id": 12345})
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(resp.json()["success"], True)
+
     def test_poster_proxy(self):
         fake_item = MagicMock()
         fake_item.posterUrl = "http://mock-plex/poster.jpg"

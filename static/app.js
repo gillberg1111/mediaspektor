@@ -187,7 +187,14 @@ document.addEventListener("DOMContentLoaded", () => {
         item.addEventListener("click", (e) => {
             e.preventDefault();
             const tabId = item.getAttribute("data-tab");
-            
+
+            // Reset search fields on tab switch so a returned-to tab shows the
+            // full list, consistent with its (now empty) search box.
+            const movieSearch = document.getElementById("movie-search");
+            const showSearch = document.getElementById("show-search");
+            if (movieSearch) movieSearch.value = "";
+            if (showSearch) showSearch.value = "";
+
             // Toggle active menu item
             navItems.forEach(nav => nav.classList.remove("active"));
             item.classList.add("active");

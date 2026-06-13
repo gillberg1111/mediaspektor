@@ -11,14 +11,14 @@ servers:
     url: "http://localhost:8096"
     username: "YOUR_JELLYFIN_USERNAME"
     password: "YOUR_JELLYFIN_PASSWORD"
-    libraries: ["Movies", "TV Shows"]
+    libraries: ["Movies", "Shows"]   # Jellyfin's default TV library is named "Shows"
 
   - type: "emby"
     enabled: false
     url: "http://localhost:8096"
     api_key: "YOUR_EMBY_API_KEY"
-    user_id: "YOUR_EMBY_USER_ID"
-    libraries: ["Movies", "TV Shows"]
+    user_id: "YOUR_EMBY_USER_ID"          # username or user GUID (resolved at startup)
+    libraries: ["Movies", "TV Shows"]     # Emby's default TV library is named "TV Shows"
 
 rules:
   min_age_days: 7

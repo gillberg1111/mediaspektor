@@ -584,6 +584,21 @@ class BaseMediaServer(ABC):
         self.config = config
         self.server_type: str = ""
 
+    def _match_view(self, name_to_id: dict[str, str], lib_name: str) -> str | None:
+        """Resolve a configured library name to a Jellyfin/Emby view id
+        (case-insensitive). Logs the available names on a miss so a
+        library-name mismatch is never silent."""
+        if lib_name in name_to_id:
+            return name_to_id[lib_name]
+        lower = {k.lower(): v for k, v in name_to_id.items()}
+        vid = lower.get(lib_name.lower())
+        if not vid:
+            logger.warning(
+                "%s: library '%s' not found. Available: %s",
+                self.server_type, lib_name, ", ".join(name_to_id.keys()) or "(none)",
+            )
+        return vid
+
     @abstractmethod
     def get_watched_items(
         self, library_names: list[str]
@@ -1124,7 +1139,7 @@ class JellyfinConnector(BaseMediaServer):
             return results
 
         for lib_name in library_names:
-            parent_id = name_to_id.get(lib_name)
+            parent_id = self._match_view(name_to_id, lib_name)
             if not parent_id:
                 continue
             try:
@@ -1179,7 +1194,7 @@ class JellyfinConnector(BaseMediaServer):
             return results
 
         for lib_name in library_names:
-            parent_id = name_to_id.get(lib_name)
+            parent_id = self._match_view(name_to_id, lib_name)
             if not parent_id:
                 continue
             try:
@@ -1351,6 +1366,30 @@ class EmbyConnector(BaseMediaServer):
         self.headers: dict[str, str] = {
             "X-MediaBrowser-Token": self.api_key,
         }
+        try:
+            self._resolve_user_id()
+        except Exception as exc:
+            logger.warning("Emby: user id resolution failed: %s. Using configured value.", exc)
+
+    def _resolve_user_id(self) -> None:
+        """Emby's /Users/{id}/... endpoints need the user GUID, not a username.
+        Accept either by resolving the configured value (name or id) via /Users."""
+        configured = self.user_id
+        resp = requests.get(
+            urljoin(self.base_url + "/", "Users"), headers=self.headers, timeout=30
+        )
+        resp.raise_for_status()
+        users = resp.json()
+        match = next(
+            (u for u in users if u.get("Id") == configured or u.get("Name") == configured),
+            None,
+        )
+        if match:
+            if match["Id"] != self.user_id:
+                logger.info("Emby: resolved user '%s' to id %s", configured, match["Id"])
+            self.user_id = match["Id"]
+        else:
+            logger.warning("Emby: could not resolve user '%s' via /Users", configured)
 
     def _get(self, path: str, params: dict | None = None) -> Any:
         url = urljoin(self.base_url + "/", path.lstrip("/"))
@@ -1373,9 +1412,8 @@ class EmbyConnector(BaseMediaServer):
         name_to_id: dict[str, str] = {v["Name"]: v["Id"] for v in views}
 
         for lib_name in library_names:
-            parent_id = name_to_id.get(lib_name)
+            parent_id = self._match_view(name_to_id, lib_name)
             if not parent_id:
-                logger.warning("Emby: library '%s' not found", lib_name)
                 continue
 
             try:
@@ -1473,7 +1511,7 @@ class EmbyConnector(BaseMediaServer):
             return results
 
         for lib_name in library_names:
-            parent_id = name_to_id.get(lib_name)
+            parent_id = self._match_view(name_to_id, lib_name)
             if not parent_id:
                 continue
             try:
@@ -1523,7 +1561,7 @@ class EmbyConnector(BaseMediaServer):
             return results
 
         for lib_name in library_names:
-            parent_id = name_to_id.get(lib_name)
+            parent_id = self._match_view(name_to_id, lib_name)
             if not parent_id:
                 continue
             try:
@@ -2540,28 +2578,41 @@ def get_web_logs():
 @app.get("/api/movies", dependencies=[Depends(verify_auth)])
 def get_web_movies():
     spektor = get_spektor()
-    all_movies = []
+    # Dedupe the same physical movie across servers sharing one library.
+    # Key on file_path (servers mount the library at the same path), falling
+    # back to title+year. Keep one card; prefer one already shown as archived.
+    by_key: dict[str, dict] = {}
+    order: list[str] = []
     for server in spektor.servers:
         libs = server.config.get("libraries", [])
-        movies = server.get_movies(libs)
-        for m in movies:
+        for m in server.get_movies(libs):
             db_item = spektor.db.get_item(server.server_type, m["id"])
             m["status"] = db_item["status"] if db_item else "original"
             m["server_type"] = server.server_type
-            all_movies.append(m)
-    return all_movies
+            key = m.get("file_path") or f"{m.get('title', '')}|{m.get('year', '')}"
+            existing = by_key.get(key)
+            if existing is None:
+                by_key[key] = m
+                order.append(key)
+            elif existing["status"] != "archived" and m["status"] == "archived":
+                by_key[key] = m
+    return [by_key[k] for k in order]
 
 @app.get("/api/shows", dependencies=[Depends(verify_auth)])
 def get_web_shows():
     spektor = get_spektor()
-    all_shows = []
+    # Dedupe the same show across servers (shows have no file_path; key on title+year).
+    by_key: dict[str, dict] = {}
+    order: list[str] = []
     for server in spektor.servers:
         libs = server.config.get("libraries", [])
-        shows = server.get_shows(libs)
-        for s in shows:
+        for s in server.get_shows(libs):
             s["server_type"] = server.server_type
-            all_shows.append(s)
-    return all_shows
+            key = f"{s.get('title', '')}|{s.get('year', '')}"
+            if key not in by_key:
+                by_key[key] = s
+                order.append(key)
+    return [by_key[k] for k in order]
 
 @app.get("/api/shows/{server_type}/{show_id}/seasons", dependencies=[Depends(verify_auth)])
 def get_web_seasons(server_type: str, show_id: str):
@@ -2624,7 +2675,7 @@ def poster_proxy(server_type: str, item_id: str):
 
 class ActionReq(BaseModel):
     server_type: str
-    item_id: str
+    item_id: str | int  # Plex ratingKeys arrive as JSON numbers; coerced to str at use
 
 def run_bg_spektor(server_type: str, item_id: str):
     spektor = get_spektor()
@@ -2636,12 +2687,12 @@ def run_bg_restore(server_type: str, item_id: str):
 
 @app.post("/api/spektor", dependencies=[Depends(verify_auth)])
 def trigger_spektor(req: ActionReq, bg_tasks: BackgroundTasks):
-    bg_tasks.add_task(run_bg_spektor, req.server_type, req.item_id)
+    bg_tasks.add_task(run_bg_spektor, req.server_type, str(req.item_id))
     return {"success": True, "message": "Archival process queued as background task."}
 
 @app.post("/api/restore", dependencies=[Depends(verify_auth)])
 def trigger_restore(req: ActionReq, bg_tasks: BackgroundTasks):
-    bg_tasks.add_task(run_bg_restore, req.server_type, req.item_id)
+    bg_tasks.add_task(run_bg_restore, req.server_type, str(req.item_id))
     return {"success": True, "message": "Restoration process queued as background task."}
 
 
