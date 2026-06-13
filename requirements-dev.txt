@@ -1,0 +1,3 @@
+# Test-only dependencies (kept out of the runtime image).
+# Starlette's TestClient (used by the FastAPI test suite) needs httpx.
+httpx
