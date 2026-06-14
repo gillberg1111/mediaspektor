@@ -7,9 +7,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# DejaVu fonts give the Pillow poster overlay a sane default when "Arial" isn't present
+# gosu = drop root -> PUID/PGID at runtime; DejaVu fonts give the Pillow poster
+# overlay a sane default when "Arial" isn't present.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends fonts-dejavu-core fontconfig \
+    && apt-get install -y --no-install-recommends gosu fonts-dejavu-core fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

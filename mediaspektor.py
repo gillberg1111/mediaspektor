@@ -2327,6 +2327,12 @@ class MediaSpektor:
                 f"container/user permissions and the volume mount."
             )
 
+        # Clone the original file's permissions (and, if privileged, ownership)
+        # onto the dummy. mkstemp creates 0600 files and os.replace preserves that,
+        # which would lock a media server running as a different user out of the
+        # dummy — making it drop the item instead of rescanning it.
+        orig_stat = os.stat(file_path)
+
         backup_media_path: str | None = None
         if backup_target:
             shutil.move(file_path, backup_target)
@@ -2337,6 +2343,14 @@ class MediaSpektor:
         try:
             with os.fdopen(fd, "wb") as fh:
                 fh.write(dummy_bytes)
+            try:
+                os.chmod(tmp_path, orig_stat.st_mode & 0o777)
+            except OSError as exc:
+                logger.debug("Could not clone permissions onto dummy: %s", exc)
+            try:
+                os.chown(tmp_path, orig_stat.st_uid, orig_stat.st_gid)
+            except OSError as exc:
+                logger.debug("Could not clone ownership onto dummy (unprivileged — fine): %s", exc)
             os.replace(tmp_path, file_path)
         except Exception:
             if os.path.exists(tmp_path):
@@ -2386,37 +2400,25 @@ class MediaSpektor:
 
             logger.info("Spektoring single item: %s (%.2f GB) — propagating to all servers", title, gb_saved)
 
-            # 3. Replace the file on disk exactly once — safely. Pre-flight checks
-            # (file exists + dir writable) abort before any delete, and the swap is
-            # atomic, so a bad path or permissions can never destroy the original.
-            backup_target = (
-                str(self.backup_dir / f"{server_type}_{item_id}{ext}")
-                if self.config.get("safety", {}).get("backup_original_media", False)
-                else None
-            )
-            backup_media_path: str | None = self._replace_with_dummy(
-                file_path, dummy_bytes, backup_target
-            )
-
-            # 4. Expand external IDs once (noop without TMDB key, episodes excluded)
+            # Expand external IDs once (noop without TMDB key; movies only).
             expanded_ids = self._expand_external_ids(media_type, item["external_ids"])
 
-            # 5. Per-server propagation loop
+            # PHASE 1 — upload the badged poster to every matched server FIRST,
+            # while each item record is still stable. Swapping the file first would
+            # trip the server's inotify rescan and invalidate the record mid-upload,
+            # causing 404/400/500 on the poster API.
+            targets: list[dict[str, Any]] = []
             for server in self.servers:
                 target = item if server is source else server.find_item(file_path, expanded_ids, media_type)
                 if target is None:
                     if server is not source:
                         logger.warning("No %s match for '%s' — skipping poster", server.server_type, title)
                         results["warnings"].append(f"Skipped {server.server_type}: no match found")
-                    else:
-                        results["warnings"].append(f"Source server {server.server_type} item lost during processing")
                     continue
 
                 local_id = target["id"]
                 local_type = server.server_type
                 backup_poster_path: str | None = None
-                poster_success = False
-
                 try:
                     poster_tmp = f"/tmp/mediaspektor_poster_{local_type}_{local_id}.jpg"
                     if server.download_poster(local_id, poster_tmp):
@@ -2427,9 +2429,7 @@ class MediaSpektor:
                         poster_overlay = self.backup_dir / f"{local_type}_{local_id}_poster_overlay.png"
                         self.overlay.apply_overlay(poster_tmp, str(poster_overlay), gb_saved)
 
-                        if server.upload_poster(local_id, str(poster_overlay)):
-                            poster_success = True
-                        else:
+                        if not server.upload_poster(local_id, str(poster_overlay)):
                             logger.warning("Failed to upload poster to %s for %s", local_type, title)
 
                         if os.path.exists(poster_tmp):
@@ -2437,26 +2437,50 @@ class MediaSpektor:
                 except Exception as exc:
                     logger.warning("Poster processing failed for %s on %s: %s", title, local_type, exc)
 
-                # Insert per-server DB row (only source gets backup_media_path)
+                targets.append({"server": server, "local_id": local_id, "backup_poster_path": backup_poster_path})
+
+            # PHASE 2 — swap the physical file exactly once. Pre-flight checks abort
+            # before any delete; on failure, roll the posters back to the originals.
+            backup_target = (
+                str(self.backup_dir / f"{server_type}_{item_id}{ext}")
+                if self.config.get("safety", {}).get("backup_original_media", False)
+                else None
+            )
+            try:
+                backup_media_path = self._replace_with_dummy(file_path, dummy_bytes, backup_target)
+            except Exception as exc:
+                logger.error("File swap failed for '%s': %s — restoring posters", title, exc)
+                for t in targets:
+                    bp = t["backup_poster_path"]
+                    if bp and os.path.exists(bp):
+                        try:
+                            t["server"].upload_poster(t["local_id"], bp)
+                        except Exception as rb_exc:
+                            logger.error("Poster rollback failed on %s: %s", t["server"].server_type, rb_exc)
+                results["error"] = str(exc)
+                return results
+
+            # PHASE 3 — record state, trigger scans, and unmonitor in *Arr now that
+            # the dummy is safely in place.
+            for t in targets:
+                server = t["server"]
                 self.db.insert(
-                    server_type=local_type,
-                    server_item_id=local_id,
+                    server_type=server.server_type,
+                    server_item_id=t["local_id"],
                     title=title,
                     media_type=media_type,
                     original_path=file_path,
                     original_size_bytes=original_size,
                     dummy_size_bytes=len(dummy_bytes),
-                    backup_poster_path=backup_poster_path,
+                    backup_poster_path=t["backup_poster_path"],
                     backup_media_path=backup_media_path if server is source else None,
                     status="archived",
                 )
-
                 try:
                     server.trigger_library_scan()
                 except Exception as exc:
-                    logger.warning("Library scan failed for %s: %s", local_type, exc)
+                    logger.warning("Library scan failed for %s: %s", server.server_type, exc)
 
-            # 6. Unmonitor in Arr once
             if media_type == "movie" and self.radarr:
                 self.radarr.unmonitor_movie_by_path(file_path)
             elif media_type == "episode" and self.sonarr:

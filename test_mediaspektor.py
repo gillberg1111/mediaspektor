@@ -924,6 +924,17 @@ class TestSafeReplace(unittest.TestCase):
             # No stray temp files left behind in the directory
             self.assertEqual(os.listdir(d), [])
 
+    def test_clones_original_permissions(self):
+        # mkstemp makes 0600; the dummy must inherit the original's mode so a
+        # media server running as another user can still read it.
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, "movie.mkv")
+            with open(f, "wb") as fh:
+                fh.write(b"X" * 100)
+            os.chmod(f, 0o644)
+            self._spektor()._replace_with_dummy(f, b"DUMMY")
+            self.assertEqual(os.stat(f).st_mode & 0o777, 0o644)
+
 
 if __name__ == "__main__":
     unittest.main()

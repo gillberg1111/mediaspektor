@@ -78,6 +78,7 @@ A multi-arch image is published to GHCR by CI on every push to `main` and every 
 docker run -d \
   --name mediaspektor \
   -p 5000:5000 \
+  -e PUID=99 -e PGID=100 -e UMASK=022 \
   -v /mnt/user/appdata/mediaspektor:/config \
   -v /mnt/user/data:/data \
   ghcr.io/gillberg1111/mediaspektor:latest
@@ -87,6 +88,9 @@ docker run -d \
   config is seeded on first run; edit it in the dashboard's **Settings** tab.
 - **`/data`** — your media. **Map it to the same container path your other media containers use**,
   with read/write access, so `/data/movies/…` etc. line up.
+- **`PUID` / `PGID`** — the container drops from root to this user/group (default `99:100` =
+  `nobody:users` on Unraid), so the dummy files it writes match the rest of your array instead of
+  being owned by `root:root`. `UMASK` (default `022`) controls their permissions.
 
 Then open `http://<unraid-ip>:5000`. On Unraid you can also add it as a Docker container via the
 template UI using the same image and the two volume mappings above.

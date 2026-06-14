@@ -5,6 +5,15 @@ All notable changes to **MediaSpektor** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to a simple `v0.x` release line.
 
+## [v1.0.1] - 2026-06-13
+
+### Fixed
+- **Poster upload race during archival.** `archive_item` now uploads the badged poster to every matched server **before** swapping the file. Swapping first tripped the server's inotify rescan, which invalidated the item record mid-upload and caused 404/400/500 errors. On a file-swap failure, posters are rolled back to the originals.
+- **Dummy file permissions.** The replacement dummy now inherits the original file's permissions (and ownership, when privileged) instead of the `0600` that `tempfile.mkstemp` forces. A media server running as a different user can now read the dummy and rescan it, instead of dropping the item from the library.
+
+### Added
+- **Unraid PUID/PGID/UMASK support.** The container starts as root and drops to the configured user (default `99:100` = `nobody:users`) via `gosu`, so files it writes to your media share match the array's usual ownership instead of `root:root`. Exposed in the Unraid template and the `docker run` docs.
+
 ## [v1.0] - 2026-06-13
 
 First stable public release — published to the Unraid Community Applications catalog.
