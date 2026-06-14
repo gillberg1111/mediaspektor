@@ -542,12 +542,23 @@ class Database:
     def get_stats(self) -> dict[str, Any]:
         conn = sqlite3.connect(self.db_path)
         try:
+            # Count each physical file once. The same movie archived across Plex +
+            # Jellyfin + Emby has one row per server (same original_path); summing the
+            # raw rows triple-counts the reclaimed space. Collapse to one row per path
+            # first (taking the largest recorded size, matching the regenerate logic).
             row = conn.execute(
                 """SELECT COUNT(*) as total_items,
-                          COALESCE(SUM(original_size_bytes), 0) as total_original,
-                          COALESCE(SUM(dummy_size_bytes), 0) as total_dummy,
-                          COALESCE(SUM(original_size_bytes - dummy_size_bytes), 0) as total_saved
-                   FROM archived_items WHERE status='archived'"""
+                          COALESCE(SUM(orig), 0) as total_original,
+                          COALESCE(SUM(dummy), 0) as total_dummy,
+                          COALESCE(SUM(orig - dummy), 0) as total_saved
+                   FROM (
+                       SELECT original_path,
+                              MAX(original_size_bytes) as orig,
+                              MAX(dummy_size_bytes)    as dummy
+                       FROM archived_items
+                       WHERE status='archived'
+                       GROUP BY original_path
+                   )"""
             ).fetchone()
             return {
                 "total_items": row[0],

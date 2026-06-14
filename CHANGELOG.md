@@ -5,6 +5,15 @@ All notable changes to **MediaSpektor** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to a simple `v0.x` release line.
 
+## [v1.2.9] - 2026-06-14
+
+### Fixed
+- **Dashboard "Total space reclaimed" and item count no longer multi-count.** A movie archived across Plex + Jellyfin + Emby has one DB row per server; the stats summed raw rows, so a single title counted 2–3×. Stats now collapse to one row per physical file (`original_path`) before summing — the movie/show grids already de-duped, now the headline numbers match.
+
+### Changed
+- Sidebar wordmark now reads **MediaSpektor** ("Media" in white, "Spektor" in ghost-green) to match the login/branding wordmark, instead of just "Spektor".
+- Background gradient eased off the all-green look: a faint **spectral indigo** drift pool is mixed in alongside the mint (and a touch of teal), for a more ghostly, less uniformly-green atmosphere.
+
 ## [v1.2.8] - 2026-06-14
 
 ### Fixed

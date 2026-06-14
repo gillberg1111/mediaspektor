@@ -27,6 +27,7 @@
     --accent-deep: #1FB9AD;
     --accent-soft: rgba(62, 207, 142, 0.12);
     --spektor:     rgba(62, 207, 142, 0.6);   /* translucent "ghost" green */
+    --ghost-indigo: 110, 99, 230;             /* spectral indigo — ghostly bg counterpoint to mint */
     --green:       #3ECF8E;     /* success → mint (single accent) */
     --red:         #E5645B;     /* semantic destructive / error only */
 
@@ -92,9 +93,9 @@ body {
     inset: 0;
     z-index: -2;
     background:
-        radial-gradient(72% 52% at 82% -6%, rgba(62, 207, 142, 0.13), transparent 60%),
-        radial-gradient(64% 50% at 6% 106%, rgba(31, 185, 173, 0.10), transparent 60%),
-        radial-gradient(60% 48% at 52% 118%, rgba(62, 207, 142, 0.09), transparent 62%),
+        radial-gradient(72% 52% at 82% -6%, rgba(62, 207, 142, 0.11), transparent 60%),
+        radial-gradient(64% 50% at 6% 106%, rgba(var(--ghost-indigo), 0.11), transparent 60%),
+        radial-gradient(60% 48% at 52% 118%, rgba(62, 207, 142, 0.07), transparent 62%),
         var(--bg);
 }
 /* slow-drifting colour pools — gives the dark page a little life */
@@ -103,9 +104,9 @@ body {
     position: absolute;
     inset: -25%;
     background:
-        radial-gradient(38% 38% at 22% 28%, rgba(62, 207, 142, 0.11), transparent 60%),
-        radial-gradient(42% 42% at 76% 64%, rgba(31, 185, 173, 0.08), transparent 60%),
-        radial-gradient(36% 36% at 60% 22%, rgba(62, 207, 142, 0.07), transparent 60%);
+        radial-gradient(38% 38% at 22% 28%, rgba(62, 207, 142, 0.10), transparent 60%),
+        radial-gradient(42% 42% at 76% 64%, rgba(var(--ghost-indigo), 0.10), transparent 60%),
+        radial-gradient(36% 36% at 60% 22%, rgba(31, 185, 173, 0.06), transparent 60%);
     filter: blur(50px);
     animation: drift 30s ease-in-out infinite alternate;
     pointer-events: none;

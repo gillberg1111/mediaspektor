@@ -90,6 +90,21 @@ class TestDatabase(unittest.TestCase):
         self.assertGreater(stats["total_saved_bytes"], 0)
 
 
+    def test_stats_dedupe_same_file_across_servers(self):
+        # Same physical movie archived on three servers — one row each.
+        for srv, sid in [("plex", "1"), ("jellyfin", "2"), ("emby", "3")]:
+            self.db.insert(
+                server_type=srv, server_item_id=sid, title="Movie", media_type="movie",
+                original_path="/data/Movie.mp4",
+                original_size_bytes=10 * 1024 * 1024 * 1024, dummy_size_bytes=2048,
+                backup_poster_path=None, backup_media_path=None, status="archived",
+            )
+        stats = self.db.get_stats()
+        # Counted once, saved space counted once — not tripled.
+        self.assertEqual(stats["total_items"], 1)
+        self.assertEqual(stats["total_original_bytes"], 10 * 1024 * 1024 * 1024)
+
+
 class TestPosterOverlay(unittest.TestCase):
     def setUp(self):
         self.config = {
@@ -856,7 +871,10 @@ class TestPropagation(unittest.TestCase):
         jf.find_item.assert_called()
         self.assertGreaterEqual(plex.upload_poster.call_count, 1)
         self.assertGreaterEqual(jf.upload_poster.call_count, 1)
-        self.assertEqual(spektor.db.get_stats()["total_items"], 2)
+        # One physical movie archived across two servers = one counted item
+        # (stats dedupe by original_path), though two DB rows exist.
+        self.assertEqual(spektor.db.get_stats()["total_items"], 1)
+        self.assertEqual(len(spektor.db.get_items_by_path("/data/Movie.mp4", status="archived")), 2)
 
     @patch("mediaspektor.JellyfinConnector.authenticate")
     @patch("mediaspektor.PlexServer")
