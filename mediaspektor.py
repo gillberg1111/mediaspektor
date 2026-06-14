@@ -2352,7 +2352,12 @@ class MediaSpektor:
                 return results
 
             # Need to find siblings. Since it's archived, we try to use the source server.
-            source_server = self._get_server(server_type)
+            source_server = None
+            for s in self.servers:
+                if s.server_type == server_type:
+                    source_server = s
+                    break
+
             if not source_server:
                 results["error"] = f"Source server {server_type} not available."
                 return results
@@ -2377,7 +2382,12 @@ class MediaSpektor:
             for sib in siblings:
                 srv_type = sib["server_type"]
                 srv_id = sib["server_item_id"]
-                server = self._get_server(srv_type)
+                server = None
+                for s in self.servers:
+                    if s.server_type == srv_type:
+                        server = s
+                        break
+                
                 if not server:
                     continue
 
@@ -2921,7 +2931,16 @@ class RegenerateReq(BaseModel):
 
 def run_bg_regenerate(server_type: str, item_id: str, target: str):
     spektor = get_spektor()
-    spektor.regenerate_item(server_type, item_id, target)
+    logger.info("Starting regeneration (%s) for %s item %s", target, server_type, item_id)
+    try:
+        results = spektor.regenerate_item(server_type, item_id, target)
+        if not results.get("success"):
+            logger.error("Regeneration failed: %s", results.get("error", "Unknown error"))
+        else:
+            msg = ", ".join(results.get("messages", []))
+            logger.info("Regeneration completed successfully. Messages: %s", msg)
+    except Exception as exc:
+        logger.error("Regeneration exception: %s", exc)
 
 @app.post("/api/regenerate", dependencies=[Depends(verify_auth)])
 def trigger_regenerate(req: RegenerateReq, bg_tasks: BackgroundTasks):

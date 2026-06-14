@@ -5,6 +5,12 @@ All notable changes to **MediaSpektor** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to a simple `v0.x` release line.
 
+## [v1.2.2] - 2026-06-14
+
+### Fixed
+- Fixed an `AttributeError` backend crash during the `Fix Poster` and `Fix Video` procedures caused by an incorrectly referenced `_get_server` method.
+- Added explicit backend logging for regenerate endpoints so background errors are properly visible in the UI dashboard logs.
+
 ## [v1.2.1] - 2026-06-14
 
 ### Fixed
