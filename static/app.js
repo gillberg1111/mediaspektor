@@ -371,26 +371,50 @@ document.addEventListener("DOMContentLoaded", () => {
     // Tab 2: Movies Logic
     // -----------------------------------------------------------------------
     
+    // Persistent cache + background revalidate, so the grids paint instantly
+    // (even after a PWA relaunch) and only update when the data actually changed.
+    const CACHE_KEYS = { movies: "ms_cache_movies_v1", shows: "ms_cache_shows_v1" };
+    function readCache(key) {
+        try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+    }
+    function writeCache(key, data) {
+        try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) { /* quota/private mode */ }
+    }
+    function isSearching(id) {
+        const el = document.getElementById(id);
+        return !!(el && el.value.trim());
+    }
+
     function loadMovies(force = false) {
         const grid = document.getElementById("movies-grid");
 
-        // Serve from in-memory cache instantly unless a forced refresh is requested
-        if (!force && currentMovies.length > 0) {
-            renderMovies(currentMovies);
-            return;
+        // 1. Hydrate from persistent cache on first use, then paint instantly.
+        if (currentMovies.length === 0) {
+            const cached = readCache(CACHE_KEYS.movies);
+            if (cached && cached.length) currentMovies = cached;
+        }
+        if (currentMovies.length > 0) {
+            if (!isSearching("movie-search")) renderMovies(currentMovies);
+        } else {
+            grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted);"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 1rem;">Scanning movies library...</p></div>';
         }
 
-        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted);"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 1rem;">Scanning movies library...</p></div>';
-
+        // 2. Revalidate in the background; update only on real change to avoid flicker.
         fetch("/api/movies")
             .then(res => res.json())
             .then(movies => {
+                writeCache(CACHE_KEYS.movies, movies);
+                const changed = JSON.stringify(movies) !== JSON.stringify(currentMovies);
                 currentMovies = movies;
-                renderMovies(movies);
+                if ((changed || force || grid.querySelector(".fa-spinner")) && !isSearching("movie-search")) {
+                    renderMovies(movies);
+                }
             })
             .catch(err => {
                 console.error("Failed to load movies:", err);
-                grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--danger);"><i class="fa-solid fa-triangle-exclamation fa-2x"></i><p style="margin-top: 1rem;">Failed to fetch movies.</p></div>';
+                if (currentMovies.length === 0) {
+                    grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--danger);"><i class="fa-solid fa-triangle-exclamation fa-2x"></i><p style="margin-top: 1rem;">Failed to fetch movies.</p></div>';
+                }
             });
     }
 
@@ -414,7 +438,7 @@ document.addEventListener("DOMContentLoaded", () => {
             card.innerHTML = `
                 <div class="media-badge ${movie.status}">${movie.status.toUpperCase()}</div>
                 <div class="media-poster-container">
-                    <img src="${posterUrl}" class="media-poster" alt="${movie.title}" onerror="this.src='https://placehold.co/400x600/0E1413/3ECF8E?text=${encodeURIComponent(movie.title)}'">
+                    <img src="${posterUrl}" class="media-poster" alt="${movie.title}" loading="lazy" decoding="async" onerror="this.src='https://placehold.co/400x600/0E1413/3ECF8E?text=${encodeURIComponent(movie.title)}'">
                 </div>
                 <div class="media-info">
                     <div class="media-title" title="${movie.title}">${movie.title}</div>
@@ -455,23 +479,31 @@ document.addEventListener("DOMContentLoaded", () => {
     function loadShows(force = false) {
         const grid = document.getElementById("shows-grid");
 
-        // Serve from in-memory cache instantly unless a forced refresh is requested
-        if (!force && currentShows.length > 0) {
-            renderShows(currentShows);
-            return;
+        if (currentShows.length === 0) {
+            const cached = readCache(CACHE_KEYS.shows);
+            if (cached && cached.length) currentShows = cached;
         }
-
-        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted);"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 1rem;">Scanning TV shows library...</p></div>';
+        if (currentShows.length > 0) {
+            if (!isSearching("show-search")) renderShows(currentShows);
+        } else {
+            grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted);"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 1rem;">Scanning TV shows library...</p></div>';
+        }
 
         fetch("/api/shows")
             .then(res => res.json())
             .then(shows => {
+                writeCache(CACHE_KEYS.shows, shows);
+                const changed = JSON.stringify(shows) !== JSON.stringify(currentShows);
                 currentShows = shows;
-                renderShows(shows);
+                if ((changed || force || grid.querySelector(".fa-spinner")) && !isSearching("show-search")) {
+                    renderShows(shows);
+                }
             })
             .catch(err => {
                 console.error("Failed to load shows:", err);
-                grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--danger);"><i class="fa-solid fa-triangle-exclamation fa-2x"></i><p style="margin-top: 1rem;">Failed to fetch TV shows.</p></div>';
+                if (currentShows.length === 0) {
+                    grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--danger);"><i class="fa-solid fa-triangle-exclamation fa-2x"></i><p style="margin-top: 1rem;">Failed to fetch TV shows.</p></div>';
+                }
             });
     }
 
@@ -492,7 +524,7 @@ document.addEventListener("DOMContentLoaded", () => {
             
             card.innerHTML = `
                 <div class="media-poster-container">
-                    <img src="${posterUrl}" class="media-poster" alt="${show.title}" onerror="this.src='https://placehold.co/400x600/0E1413/3ECF8E?text=${encodeURIComponent(show.title)}'">
+                    <img src="${posterUrl}" class="media-poster" alt="${show.title}" loading="lazy" decoding="async" onerror="this.src='https://placehold.co/400x600/0E1413/3ECF8E?text=${encodeURIComponent(show.title)}'">
                 </div>
                 <div class="media-info">
                     <div class="media-title" title="${show.title}">${show.title}</div>
@@ -538,7 +570,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     
                     card.innerHTML = `
                         <div class="season-poster-container">
-                            <img src="${posterUrl}" class="season-poster" alt="${season.title}" onerror="this.src='https://placehold.co/400x600/0E1413/3ECF8E?text=${encodeURIComponent(season.title)}'">
+                            <img src="${posterUrl}" class="season-poster" alt="${season.title}" loading="lazy" decoding="async" onerror="this.src='https://placehold.co/400x600/0E1413/3ECF8E?text=${encodeURIComponent(season.title)}'">
                         </div>
                         <div class="season-info">
                             <div class="season-title">${season.title}</div>

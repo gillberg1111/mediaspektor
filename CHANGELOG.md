@@ -5,6 +5,15 @@ All notable changes to **MediaSpektor** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to a simple `v0.x` release line.
 
+## [v1.3.1] - 2026-06-14
+
+### Fixed
+- **Posters intermittently failed to load (especially on mobile).** The poster proxy used the default 10-connection HTTP pool and held connections open while streaming, so a phone loading a full grid at once exhausted the pool ("Connection pool is full, discarding connection"). Now it uses a shared pooled session (maxsize 50) and reads each poster fully so the connection is released immediately. Poster `<img>`s also load lazily, so off-screen posters don't all fetch at once.
+
+### Changed
+- **Mobile layout reworked.** The top navigation now lays out as a clean two-row bar (brand + status/logout, then a full-width scrollable tab strip) instead of the cramped/overflowing row; the header, hero, settings grids, and poster grid all adapt down to phone widths.
+- **Movies & TV Shows now cache and revalidate in the background.** The grids paint instantly from a persistent (localStorage) cache — even after a PWA relaunch — then quietly refresh from the server and only re-render if the data actually changed. No more full-screen "Scanning…" wait every time you open a tab.
+
 ## [v1.3.0] - 2026-06-14
 
 ### Added

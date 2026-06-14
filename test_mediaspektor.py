@@ -572,14 +572,16 @@ class TestFastAPI(unittest.TestCase):
         self.mock_connector._server.fetchItem.return_value = fake_item
 
         fake_resp = MagicMock()
-        fake_resp.iter_content = lambda chunk_size=1024: iter([b"fake-image-data"])
+        fake_resp.content = b"fake-image-data"
         fake_resp.raise_for_status = lambda: None
         fake_resp.headers = {"Content-Type": "image/jpeg"}
 
-        with patch("mediaspektor.requests.get", return_value=fake_resp):
+        # Poster proxy now uses the pooled HTTP session and reads the body fully.
+        with patch("mediaspektor.HTTP.get", return_value=fake_resp):
             resp = self.client.get("/api/posterproxy?server_type=plex&item_id=1")
 
         self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content, b"fake-image-data")
         self.assertEqual(resp.headers["Cache-Control"], "public, max-age=86400")
         self.mock_connector._server.fetchItem.assert_called_with(1)
 

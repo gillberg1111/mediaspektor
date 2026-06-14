@@ -29,6 +29,16 @@ from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger("mediaspektor")
 
+# Shared HTTP session with a generous connection pool. The dashboard proxies
+# every poster through the backend; on mobile a grid loads many at once, which
+# exhausted the default 10-connection pool ("Connection pool is full, discarding
+# connection") and dropped posters. One pooled session keeps connections warm
+# and bounded.
+HTTP = requests.Session()
+_pool_adapter = requests.adapters.HTTPAdapter(pool_connections=20, pool_maxsize=50)
+HTTP.mount("http://", _pool_adapter)
+HTTP.mount("https://", _pool_adapter)
+
 
 def _parse_iso_date(date_str: str | None) -> datetime | None:
     if not date_str:
@@ -3104,24 +3114,24 @@ def poster_proxy(server_type: str, item_id: str):
             url = item.posterUrl
             if url.startswith("/"):
                 url = server.config["url"].rstrip("/") + url + "?X-Plex-Token=" + server.config["token"]
-            resp = requests.get(url, timeout=30, stream=True)
-            resp.raise_for_status()
-            return StreamingResponse(
-                resp.iter_content(chunk_size=1024),
-                media_type=resp.headers.get("Content-Type", "image/jpeg"),
-                headers={"Cache-Control": "public, max-age=86400"}
-            )
+            resp = HTTP.get(url, timeout=30)
         elif server_type in ("jellyfin", "emby"):
             url = urljoin(server.base_url + "/", f"Items/{item_id}/Images/Primary")
-            resp = requests.get(url, headers=server.headers, timeout=30, stream=True)
-            resp.raise_for_status()
-            return StreamingResponse(
-                resp.iter_content(chunk_size=1024),
-                media_type=resp.headers.get("Content-Type", "image/jpeg"),
-                headers={"Cache-Control": "public, max-age=86400"}
-            )
+            resp = HTTP.get(url, headers=server.headers, timeout=30)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported server type '{server_type}'")
+        resp.raise_for_status()
+        # Read fully (posters are small) so the pooled connection is released
+        # immediately instead of being held open by a streaming generator.
+        return Response(
+            content=resp.content,
+            media_type=resp.headers.get("Content-Type", "image/jpeg"),
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+    except HTTPException:
+        raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Poster proxy failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Poster proxy failed: {exc}")
 
 class ActionReq(BaseModel):
     server_type: str
