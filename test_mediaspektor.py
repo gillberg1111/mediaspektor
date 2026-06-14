@@ -1593,5 +1593,129 @@ class TestShowTotalSize(unittest.TestCase):
             self.assertEqual(total, 300)
 
 
+class TestShowMatching(unittest.TestCase):
+    def test_normalize_show_title(self):
+        from mediaspektor import _normalize_show_title
+        self.assertEqual(_normalize_show_title("FROM"), "from")
+        self.assertEqual(_normalize_show_title("From"), "from")
+        self.assertEqual(_normalize_show_title("The Office (US)"), "the office")
+        self.assertEqual(_normalize_show_title("Yellowstone (2018)"), "yellowstone")
+        self.assertEqual(_normalize_show_title("Poker Face (2023)"), "poker face")
+
+    def test_titles_match(self):
+        from mediaspektor import _titles_match
+        self.assertTrue(_titles_match("FROM", "From"))
+        self.assertTrue(_titles_match("Yellowstone (2018)", "Yellowstone", 2018, None))
+        self.assertFalse(_titles_match("The Office", "The Office", 2005, 2001))
+        self.assertFalse(_titles_match("Stargirl", "DC's Stargirl"))
+
+    def setUp(self):
+        self.temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.temp_db.close()
+        self.temp_config = tempfile.NamedTemporaryFile(suffix=".yaml", delete=False)
+        self.temp_config.close()
+        import yaml
+        with open(self.temp_config.name, "w") as f:
+            yaml.safe_dump({"servers": [], "rules": {}, "safety": {"dry_run": True}}, f)
+        self.spektor = MediaSpektor(self.temp_config.name)
+        self.spektor.db = Database(self.temp_db.name)
+
+    def tearDown(self):
+        import mediaspektor
+        mediaspektor._SHOW_SIZE_CACHE.clear()
+        for p in (self.temp_db.name, self.temp_config.name):
+            if os.path.exists(p):
+                os.unlink(p)
+
+    def test_shows_id_match_dedupes(self):
+        import mediaspektor
+        srv_a = MagicMock()
+        srv_a.server_type = "plex"
+        srv_a.config = {"libraries": ["TV"]}
+        srv_a.get_shows.return_value = [{
+            "id": "a1", "title": "Stargirl", "year": 2020,
+            "external_ids": {"tvdb": "385376", "imdb": None, "tmdb": None}
+        }]
+        srv_a.get_show_total_size.return_value = 0
+        srv_b = MagicMock()
+        srv_b.server_type = "jellyfin"
+        srv_b.config = {"libraries": ["TV"]}
+        srv_b.get_shows.return_value = [{
+            "id": "b1", "title": "DC's Stargirl", "year": 2020,
+            "external_ids": {"tvdb": "385376", "imdb": None, "tmdb": None}
+        }]
+        srv_b.get_show_total_size.return_value = 0
+        self.spektor.servers = [srv_a, srv_b]
+
+        from fastapi.testclient import TestClient
+        from mediaspektor import app
+        old = mediaspektor.GLOBAL_SPEKTOR
+        mediaspektor.GLOBAL_SPEKTOR = self.spektor
+        try:
+            client = TestClient(app)
+            resp = client.get("/api/shows")
+            data = resp.json()
+            self.assertEqual(len(data), 1)
+            self.assertEqual(data[0]["title"], "Stargirl")
+        finally:
+            mediaspektor.GLOBAL_SPEKTOR = old
+
+    def test_shows_title_fallback_dedupes(self):
+        import mediaspektor
+        srv_a = MagicMock()
+        srv_a.server_type = "plex"
+        srv_a.config = {"libraries": ["TV"]}
+        srv_a.get_shows.return_value = [{
+            "id": "a1", "title": "Yellowstone (2018)", "year": 2018,
+            "external_ids": {}
+        }]
+        srv_a.get_show_total_size.return_value = 0
+        srv_b = MagicMock()
+        srv_b.server_type = "jellyfin"
+        srv_b.config = {"libraries": ["TV"]}
+        srv_b.get_shows.return_value = [{
+            "id": "b1", "title": "Yellowstone", "year": None,
+            "external_ids": {}
+        }]
+        srv_b.get_show_total_size.return_value = 0
+        self.spektor.servers = [srv_a, srv_b]
+
+        from fastapi.testclient import TestClient
+        from mediaspektor import app
+        old = mediaspektor.GLOBAL_SPEKTOR
+        mediaspektor.GLOBAL_SPEKTOR = self.spektor
+        try:
+            client = TestClient(app)
+            resp = client.get("/api/shows")
+            data = resp.json()
+            self.assertEqual(len(data), 1)
+        finally:
+            mediaspektor.GLOBAL_SPEKTOR = old
+
+    def test_shows_distinct_remain_separate(self):
+        import mediaspektor
+        srv = MagicMock()
+        srv.server_type = "plex"
+        srv.config = {"libraries": ["TV"]}
+        srv.get_shows.return_value = [
+            {"id": "a1", "title": "Breaking Bad", "year": 2008, "external_ids": {"tvdb": "81189"}},
+            {"id": "a2", "title": "Better Call Saul", "year": 2015, "external_ids": {"tvdb": "273181"}},
+        ]
+        srv.get_show_total_size.return_value = 0
+        self.spektor.servers = [srv]
+
+        from fastapi.testclient import TestClient
+        from mediaspektor import app
+        old = mediaspektor.GLOBAL_SPEKTOR
+        mediaspektor.GLOBAL_SPEKTOR = self.spektor
+        try:
+            client = TestClient(app)
+            resp = client.get("/api/shows")
+            data = resp.json()
+            self.assertEqual(len(data), 2)
+        finally:
+            mediaspektor.GLOBAL_SPEKTOR = old
+
+
 if __name__ == "__main__":
     unittest.main()

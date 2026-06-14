@@ -5,6 +5,11 @@ All notable changes to **MediaSpektor** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to a simple `v0.x` release line.
 
+## [v1.4.1] - 2026-06-14
+
+### Fixed
+- **The same TV series appeared as separate cards across servers.** The dashboard deduped shows by an exact `title|year` match, so the same series listed under a slightly different name on each server showed twice (e.g. `FROM`/`From`, `The Office`/`The Office (US)`, `Yellowstone (2018)`/`Yellowstone`, `Poker Face`/`Poker Face (2023)`, `Stargirl`/`DC's Stargirl`). Shows are now matched across servers by **external ID first** (TVDB → IMDB → TMDB), falling back to a **normalized title + year** comparison (case-insensitive; strips trailing `(US)`/`(2018)`-style suffixes; a known year mismatch still keeps e.g. the US vs UK *Office* distinct). Episode archival continues to propagate across servers by path, so merged cards behave correctly.
+
 ## [v1.4.0] - 2026-06-14
 
 ### Added

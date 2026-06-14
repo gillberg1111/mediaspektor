@@ -78,6 +78,32 @@ def _provider_external_ids(provider_ids: dict) -> dict[str, str | None]:
     }
 
 
+def _normalize_show_title(title: str | None) -> str:
+    """Lowercase, strip punctuation, collapse whitespace, and remove trailing
+    disambiguation suffixes that one server adds but another omits — country
+    codes like (US)/(UK)/(AU) and premiere years like (2018), in any combination.
+    e.g. "The Office (US)" -> "the office", "Yellowstone (2018)" -> "yellowstone"."""
+    import re
+    if not title:
+        return ""
+    s = re.sub(r'(\s*\(\d{4}\)|\s*\([A-Z]{2,3}\))+\s*$', '', title)
+    s = re.sub(r"[^\w\s]", " ", s.lower())
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _titles_match(a: str | None, b: str | None, year_a=None, year_b=None) -> bool:
+    """True if a and b normalize to the same string AND years agree when BOTH are
+    known. A year mismatch with both years known is NOT a match (keeps e.g. the
+    US vs UK 'The Office' distinct); one missing year still matches on title."""
+    na, nb = _normalize_show_title(a), _normalize_show_title(b)
+    if not na or not nb or na != nb:
+        return False
+    if year_a is not None and year_b is not None and year_a != year_b:
+        return False
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Optional plexapi import
 # ---------------------------------------------------------------------------
@@ -838,7 +864,8 @@ class PlexConnector(BaseMediaServer):
                             "is_watched": show.isWatched,
                             "genres": genres,
                             "labels": labels,
-                            "poster_path": show.thumb
+                            "poster_path": show.thumb,
+                            "external_ids": _plex_external_ids(getattr(show, "guids", None)),
                         })
             except Exception as exc:
                 logger.error("Plex get_shows error: %s", exc)
@@ -1279,7 +1306,7 @@ class JellyfinConnector(BaseMediaServer):
                         "ParentId": parent_id,
                         "Recursive": "true",
                         "IncludeItemTypes": "Series",
-                        "Fields": "UserData,Tags,Genres,ProductionYear",
+                        "Fields": "UserData,Tags,Genres,ProductionYear,ProviderIds",
                     },
                 )
                 items = resp.json().get("Items", [])
@@ -1294,7 +1321,8 @@ class JellyfinConnector(BaseMediaServer):
                         "is_watched": user_data.get("Played", False),
                         "genres": genres,
                         "labels": labels,
-                        "poster_path": f"/Items/{item['Id']}/Images/Primary"
+                        "poster_path": f"/Items/{item['Id']}/Images/Primary",
+                        "external_ids": _provider_external_ids(item.get("ProviderIds", {})),
                     })
             except Exception as exc:
                 logger.error("Jellyfin get_shows from '%s': %s", lib_name, exc)
@@ -1688,7 +1716,7 @@ class EmbyConnector(BaseMediaServer):
                         "ParentId": parent_id,
                         "Recursive": "true",
                         "IncludeItemTypes": "Series",
-                        "Fields": "UserData,Tags,Genres,ProductionYear",
+                        "Fields": "UserData,Tags,Genres,ProductionYear,ProviderIds",
                     },
                 )
                 items = resp.json().get("Items", [])
@@ -1703,7 +1731,8 @@ class EmbyConnector(BaseMediaServer):
                         "is_watched": user_data.get("Played", False),
                         "genres": genres,
                         "labels": labels,
-                        "poster_path": f"/Items/{item['Id']}/Images/Primary"
+                        "poster_path": f"/Items/{item['Id']}/Images/Primary",
+                        "external_ids": _provider_external_ids(item.get("ProviderIds", {})),
                     })
             except Exception as exc:
                 logger.error("Emby get_shows from '%s': %s", lib_name, exc)
@@ -3165,25 +3194,56 @@ def get_web_movies():
 @app.get("/api/shows", dependencies=[Depends(verify_auth)])
 def get_web_shows():
     spektor = get_spektor()
-    # Dedupe the same show across servers (shows have no file_path; key on title+year).
-    by_key: dict[str, dict] = {}
-    order: list[str] = []
+    # Dedupe the same series across servers. Shows have no shared file path, and
+    # servers report different titles ("FROM"/"From", "The Office"/"The Office (US)",
+    # "Stargirl"/"DC's Stargirl"). Match by external ID first (TVDB->IMDB->TMDB),
+    # then by normalized title + year. The first server to report a show owns the
+    # canonical card (drilling in / total_size use that server; episode archival
+    # still propagates across servers by path).
+    canon: list[dict] = []          # canonical show dicts, in first-seen order
+    id_index: dict[str, int] = {}   # "system:id" -> index into canon
     for server in spektor.servers:
         libs = server.config.get("libraries", [])
         for s in server.get_shows(libs):
             s["server_type"] = server.server_type
-            key = f"{s.get('title', '')}|{s.get('year', '')}"
-            if key not in by_key:
-                by_key[key] = s
-                order.append(key)
-                cache_key = (server.server_type, s["id"])
-                if cache_key not in _SHOW_SIZE_CACHE:
-                    try:
-                        _SHOW_SIZE_CACHE[cache_key] = server.get_show_total_size(s["id"])
-                    except Exception:
-                        _SHOW_SIZE_CACHE[cache_key] = 0
-                s["total_size"] = _SHOW_SIZE_CACHE[cache_key]
-    return [by_key[k] for k in order]
+            ids = s.get("external_ids") or {}
+            id_keys = [f"{sys}:{ids[sys]}" for sys in ("tvdb", "imdb", "tmdb") if ids.get(sys)]
+
+            # 1) external-ID match (robust, cross-naming)
+            idx = next((id_index[k] for k in id_keys if k in id_index), None)
+            # 2) normalized title + year fallback
+            if idx is None:
+                for i, c in enumerate(canon):
+                    if _titles_match(s.get("title"), c.get("title"), s.get("year"), c.get("year")):
+                        idx = i
+                        break
+
+            if idx is not None:
+                # Merge into the existing canonical: learn any new IDs so a third
+                # server overlapping on a different ID system still matches.
+                c = canon[idx]
+                cids = c.setdefault("external_ids", {}) or {}
+                for sys in ("tvdb", "imdb", "tmdb"):
+                    if ids.get(sys) and not cids.get(sys):
+                        cids[sys] = ids[sys]
+                c["external_ids"] = cids
+                for k in id_keys:
+                    id_index.setdefault(k, idx)
+                continue
+
+            # New canonical show
+            new_idx = len(canon)
+            canon.append(s)
+            for k in id_keys:
+                id_index[k] = new_idx
+            cache_key = (server.server_type, s["id"])
+            if cache_key not in _SHOW_SIZE_CACHE:
+                try:
+                    _SHOW_SIZE_CACHE[cache_key] = server.get_show_total_size(s["id"])
+                except Exception:
+                    _SHOW_SIZE_CACHE[cache_key] = 0
+            s["total_size"] = _SHOW_SIZE_CACHE[cache_key]
+    return canon
 
 @app.get("/api/shows/{server_type}/{show_id}/seasons", dependencies=[Depends(verify_auth)])
 def get_web_seasons(server_type: str, show_id: str):
