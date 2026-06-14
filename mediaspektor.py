@@ -7,6 +7,7 @@ archived content and integrates with Radarr/Sonarr to prevent re-downloads.
 
 import argparse
 import base64
+import hmac
 import json
 import logging
 import os
@@ -1928,6 +1929,21 @@ class MediaSpektor:
         with open(config_path, "r") as f:
             self.config: dict = yaml.safe_load(f)
 
+        # Surface weak auth posture loudly — the dashboard exposes server tokens,
+        # passwords and the ability to overwrite media.
+        sec = self.config.get("security", {})
+        if not sec.get("enabled", False):
+            logger.warning(
+                "SECURITY: dashboard authentication is DISABLED — anyone who can reach "
+                "the web UI can read your server tokens/passwords and archive media. "
+                "Set security.enabled: true with a strong password."
+            )
+        elif sec.get("password", "admin") in ("", "admin"):
+            logger.warning(
+                "SECURITY: the dashboard is using the default 'admin' password — "
+                "change security.password."
+            )
+
         config_dir = os.path.dirname(os.path.abspath(config_path))
         db_path = os.path.join(config_dir, "mediaspektor.db")
         self.db = Database(db_path)
@@ -2526,7 +2542,6 @@ logging.getLogger().addHandler(memory_log_handler)
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request, Response, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uuid
 
@@ -2545,13 +2560,9 @@ def verify_auth(request: Request):
     if not session_cookie or session_cookie not in VALID_SESSIONS:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# No CORS middleware: the dashboard and API are served same-origin, so cross-origin
+# access isn't needed. (A wildcard allow_origins with allow_credentials is both
+# rejected by browsers and a security smell, so it is intentionally omitted.)
 
 # Global variables for Orchestrator and config path
 GLOBAL_SPEKTOR: MediaSpektor | None = None
@@ -2584,8 +2595,11 @@ def api_login(req: LoginReq, response: Response):
         
     config_user = security_config.get("username", "admin")
     config_pass = security_config.get("password", "admin")
-    
-    if req.username == config_user and req.password == config_pass:
+
+    # Constant-time comparison to avoid leaking credential length/content via timing.
+    user_ok = hmac.compare_digest(req.username.encode(), config_user.encode())
+    pass_ok = hmac.compare_digest(req.password.encode(), config_pass.encode())
+    if user_ok and pass_ok:
         session_id = str(uuid.uuid4())
         VALID_SESSIONS.add(session_id)
         response.set_cookie(

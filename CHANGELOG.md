@@ -5,6 +5,13 @@ All notable changes to **MediaSpektor** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to a simple `v0.x` release line.
 
+## [v1.0.3] - 2026-06-13
+
+### Security
+- **Removed the over-permissive CORS config** (`allow_origins=["*"]` with `allow_credentials=True`). The dashboard and API are same-origin, so no CORS is needed; the wildcard+credentials combination is both rejected by browsers and a security smell.
+- **Constant-time login comparison** — credentials are now checked with `hmac.compare_digest` instead of `==`, avoiding timing side channels.
+- **Loud startup warning** when dashboard auth is disabled or still using the default `admin` password, since the dashboard exposes server tokens and can overwrite media.
+
 ## [v1.0.2] - 2026-06-13
 
 ### Fixed
