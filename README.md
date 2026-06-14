@@ -1,4 +1,4 @@
-# MediaSpektor: Multi-Server Watch State Storage Archiver
+# MediaSpektor: Multi-Server Watched-Media Storage Reclaimer
 
 ![MediaSpektor](static/mediaspektor-banner.png)
 

@@ -624,7 +624,7 @@ class BaseMediaServer(ABC):
     def upload_poster(self, item_id: str, source_path: str) -> bool: ...
 
     @abstractmethod
-    def trigger_library_scan(self) -> None: ...
+    def trigger_library_scan(self, media_type: str | None = None, item_id: str | None = None) -> None: ...
 
     def get_movies(self, library_names: list[str]) -> list[dict[str, Any]]:
         return []
@@ -761,12 +761,20 @@ class PlexConnector(BaseMediaServer):
             logger.error("Plex: upload poster failed for %s: %s", item_id, exc)
             return False
 
-    def trigger_library_scan(self) -> None:
+    def trigger_library_scan(self, media_type: str | None = None, item_id: str | None = None) -> None:
+        # Scope the scan to the changed item's library type so a movie change
+        # doesn't kick off a TV-library scan (and vice versa). media_type None
+        # falls back to scanning every configured library (used by batch runs).
+        want = {"movie": "movie", "episode": "show", "show": "show"}.get(media_type)
         try:
+            scanned = []
             for lib_name in self.config.get("libraries", []):
                 section = self._server.library.section(lib_name)
+                if want and section.type != want:
+                    continue
                 section.update()
-            logger.info("Plex: library scan triggered")
+                scanned.append(lib_name)
+            logger.info("Plex: library scan triggered for %s", ", ".join(scanned) or "all libraries")
         except Exception as exc:
             logger.error("Plex: library scan failed: %s", exc)
 
@@ -1138,10 +1146,27 @@ class JellyfinConnector(BaseMediaServer):
             logger.error("Jellyfin: upload poster failed for %s: %s", item_id, exc)
             return False
 
-    def trigger_library_scan(self) -> None:
+    def trigger_library_scan(self, media_type: str | None = None, item_id: str | None = None) -> None:
         try:
-            self._request("POST", "Library/Refresh")
-            logger.info("Jellyfin: library scan triggered")
+            if item_id:
+                # Refresh just the changed item so we don't scan unrelated libraries
+                # (e.g. TV when a movie changed). ImageRefreshMode=None keeps the
+                # badged poster we just uploaded from being overwritten.
+                self._request(
+                    "POST",
+                    f"Items/{item_id}/Refresh",
+                    params={
+                        "Recursive": "false",
+                        "MetadataRefreshMode": "Default",
+                        "ImageRefreshMode": "None",
+                        "ReplaceAllMetadata": "false",
+                        "ReplaceAllImages": "false",
+                    },
+                )
+                logger.info("Jellyfin: refresh triggered for item %s", item_id)
+            else:
+                self._request("POST", "Library/Refresh")
+                logger.info("Jellyfin: full library scan triggered")
         except Exception as exc:
             logger.error("Jellyfin: library scan failed: %s", exc)
 
@@ -1519,11 +1544,29 @@ class EmbyConnector(BaseMediaServer):
             logger.error("Emby: upload poster failed for %s: %s", item_id, exc)
             return False
 
-    def trigger_library_scan(self) -> None:
+    def trigger_library_scan(self, media_type: str | None = None, item_id: str | None = None) -> None:
         try:
-            url = urljoin(self.base_url + "/", "Library/Refresh")
-            requests.post(url, headers=self.headers, timeout=30)
-            logger.info("Emby: library scan triggered")
+            if item_id:
+                # Refresh just the changed item, not every library. ImageRefreshMode=None
+                # preserves the badged poster we just uploaded.
+                url = urljoin(self.base_url + "/", f"Items/{item_id}/Refresh")
+                requests.post(
+                    url,
+                    headers=self.headers,
+                    params={
+                        "Recursive": "false",
+                        "MetadataRefreshMode": "Default",
+                        "ImageRefreshMode": "None",
+                        "ReplaceAllMetadata": "false",
+                        "ReplaceAllImages": "false",
+                    },
+                    timeout=30,
+                )
+                logger.info("Emby: refresh triggered for item %s", item_id)
+            else:
+                url = urljoin(self.base_url + "/", "Library/Refresh")
+                requests.post(url, headers=self.headers, timeout=30)
+                logger.info("Emby: full library scan triggered")
         except Exception as exc:
             logger.error("Emby: library scan failed: %s", exc)
 
@@ -2353,7 +2396,7 @@ class MediaSpektor:
                 except Exception as exc:
                     logger.error("Failed to restore poster for %s on %s: %s", sib.get("title"), srv_type, exc)
             try:
-                server.trigger_library_scan()
+                server.trigger_library_scan(media_type=sib.get("media_type"), item_id=srv_item_id)
             except Exception as exc:
                 logger.warning("Library scan failed for %s: %s", srv_type, exc)
 
@@ -2471,12 +2514,16 @@ class MediaSpektor:
                 logger.error(results["error"])
                 return results
 
-            # Trigger library scans
-            for s in self.servers:
+            # Trigger a scoped refresh for each server that actually has this item,
+            # limited to that item / its library type — not a full scan of every server.
+            for sib in self.db.get_items_by_path(original_path, status="archived"):
+                server = next((s for s in self.servers if s.server_type == sib["server_type"]), None)
+                if not server:
+                    continue
                 try:
-                    s.trigger_library_scan()
+                    server.trigger_library_scan(media_type=sib.get("media_type"), item_id=sib["server_item_id"])
                 except Exception as exc:
-                    logger.warning("Library scan failed on %s: %s", s.server_type, exc)
+                    logger.warning("Library scan failed on %s: %s", sib["server_type"], exc)
 
             return results
 
@@ -2675,7 +2722,7 @@ class MediaSpektor:
                     status="archived",
                 )
                 try:
-                    server.trigger_library_scan()
+                    server.trigger_library_scan(media_type=media_type, item_id=t["local_id"])
                 except Exception as exc:
                     logger.warning("Library scan failed for %s: %s", server.server_type, exc)
 

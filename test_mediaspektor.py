@@ -1289,5 +1289,50 @@ class TestPosterUploadEncoding(unittest.TestCase):
             self.assertEqual(mock_post.call_args.kwargs["data"], base64.b64encode(raw))
 
 
+class TestLibraryScanScoping(unittest.TestCase):
+    """Scans should target the changed item's library/type, not the whole server."""
+
+    def test_plex_scan_scopes_to_media_type(self):
+        import mediaspektor
+        with patch("mediaspektor.PlexServer"):
+            plex = mediaspektor.PlexConnector(
+                {"type": "plex", "url": "http://p", "token": "t", "libraries": ["Movies", "TV"]}
+            )
+        movie_sec, tv_sec = MagicMock(), MagicMock()
+        movie_sec.type, tv_sec.type = "movie", "show"
+        sections = {"Movies": movie_sec, "TV": tv_sec}
+        plex._server = MagicMock()
+        plex._server.library.section.side_effect = lambda n: sections[n]
+
+        plex.trigger_library_scan(media_type="movie")
+        movie_sec.update.assert_called_once()
+        tv_sec.update.assert_not_called()
+
+    def test_jellyfin_scan_refreshes_single_item(self):
+        import mediaspektor
+        with patch.object(mediaspektor.JellyfinConnector, "authenticate"):
+            jf = mediaspektor.JellyfinConnector(
+                {"type": "jellyfin", "url": "http://jf", "username": "u", "password": "p"}
+            )
+        jf.api_key = "key"
+        with patch.object(jf, "_request") as mock_req:
+            jf.trigger_library_scan(media_type="movie", item_id="42")
+        path = mock_req.call_args.args[1]
+        self.assertEqual(path, "Items/42/Refresh")
+        # Never touches images, so the badged poster survives.
+        self.assertEqual(mock_req.call_args.kwargs["params"]["ImageRefreshMode"], "None")
+
+    def test_jellyfin_scan_falls_back_to_full_when_no_item(self):
+        import mediaspektor
+        with patch.object(mediaspektor.JellyfinConnector, "authenticate"):
+            jf = mediaspektor.JellyfinConnector(
+                {"type": "jellyfin", "url": "http://jf", "username": "u", "password": "p"}
+            )
+        jf.api_key = "key"
+        with patch.object(jf, "_request") as mock_req:
+            jf.trigger_library_scan()
+        self.assertEqual(mock_req.call_args.args[1], "Library/Refresh")
+
+
 if __name__ == "__main__":
     unittest.main()

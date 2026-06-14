@@ -5,6 +5,18 @@ All notable changes to **MediaSpektor** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to a simple `v0.x` release line.
 
+## [v1.2.10] - 2026-06-14
+
+### Changed
+- **Library scans are now scoped to the changed item, not the whole server.** Archiving/restoring/regenerating a *movie* no longer kicks off a TV-library scan (and vice versa):
+  - **Plex** scans only the section whose type matches the item (movie vs. show).
+  - **Jellyfin/Emby** refresh just the affected item (`Items/{id}/Refresh`) with `ImageRefreshMode=None`, so the scan stays targeted and never overwrites the badged poster we uploaded.
+  - Batch runs (the scheduled archive) still do a full scan, since they touch many items at once.
+- README title changed from "Multi-Server Watch State Storage Archiver" to "Multi-Server Watched-Media Storage Reclaimer" — "watch state" wrongly implied watched/unwatched syncing; the tool reclaims disk space from watched media.
+
+### Note
+- Regenerating a **poster** does not trigger any library scan from MediaSpektor — if your server scans after a poster upload, that's the media server's own behavior.
+
 ## [v1.2.9] - 2026-06-14
 
 ### Fixed
