@@ -621,6 +621,32 @@ class TestAPISecurity(unittest.TestCase):
         })
         self.assertEqual(resp.status_code, 401)
 
+    def test_login_flags_default_password(self):
+        self.spektor.config["security"]["password"] = "admin"
+        resp = self.client.post("/api/login", json={"username": "testuser", "password": "admin"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json().get("must_change_password"))
+
+    def test_change_password(self):
+        self.client.post("/api/login", json={"username": "testuser", "password": "testpassword"})
+        # rejects the default and too-short passwords
+        self.assertEqual(self.client.post("/api/change-password", json={"password": "admin"}).status_code, 400)
+        self.assertEqual(self.client.post("/api/change-password", json={"password": "abc"}).status_code, 400)
+        # accepts a strong one and persists it
+        resp = self.client.post("/api/change-password", json={"password": "s3cret-pw"})
+        self.assertEqual(resp.status_code, 200)
+        import mediaspektor
+        self.assertEqual(mediaspektor.GLOBAL_SPEKTOR.config["security"]["password"], "s3cret-pw")
+
+    def test_update_config_preserves_security(self):
+        self.client.post("/api/login", json={"username": "testuser", "password": "testpassword"})
+        # The settings form posts a config without a security block — auth must survive.
+        resp = self.client.post("/api/config", json={"config": {"servers": [], "rules": {}, "safety": {}}})
+        self.assertEqual(resp.status_code, 200)
+        import mediaspektor
+        self.assertIn("security", mediaspektor.GLOBAL_SPEKTOR.config)
+        self.assertTrue(mediaspektor.GLOBAL_SPEKTOR.config["security"].get("enabled"))
+
     def test_logout(self):
         # Login first
         resp = self.client.post("/api/login", json={

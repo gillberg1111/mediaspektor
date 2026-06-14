@@ -2587,12 +2587,12 @@ class LoginReq(BaseModel):
     password: str
 
 @app.post("/api/login")
-def api_login(req: LoginReq, response: Response):
+def api_login(req: LoginReq, request: Request, response: Response):
     spektor = get_spektor()
     security_config = spektor.config.get("security", {})
     if not security_config.get("enabled", False):
         return {"success": True}
-        
+
     config_user = security_config.get("username", "admin")
     config_pass = security_config.get("password", "admin")
 
@@ -2607,9 +2607,11 @@ def api_login(req: LoginReq, response: Response):
             value=session_id,
             httponly=True,
             samesite="lax",
-            max_age=30 * 24 * 60 * 60 # 30 days
+            secure=request.url.scheme == "https",  # mark Secure when served over HTTPS
+            max_age=30 * 24 * 60 * 60  # 30 days
         )
-        return {"success": True}
+        # Surface whether the default password is still in use so the UI can force a change.
+        return {"success": True, "must_change_password": config_pass in ("", "admin")}
     else:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
@@ -2633,10 +2635,46 @@ class UpdateConfigReq(BaseModel):
 def update_config(req: UpdateConfigReq):
     global GLOBAL_SPEKTOR
     try:
+        new_cfg = dict(req.config)
+        # Never let the settings form silently drop the security block — that would
+        # disable authentication. Preserve the existing one if the client omits it.
+        if "security" not in new_cfg:
+            existing = (get_spektor().config or {}).get("security")
+            if existing:
+                new_cfg["security"] = existing
         with open(CONFIG_PATH, "w") as f:
-            yaml.safe_dump(req.config, f)
+            yaml.safe_dump(new_cfg, f)
         GLOBAL_SPEKTOR = MediaSpektor(CONFIG_PATH)
         logger.info("Configuration updated and reloaded successfully.")
+        return {"success": True}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+class ChangePasswordReq(BaseModel):
+    password: str
+    username: str | None = None
+
+
+@app.post("/api/change-password", dependencies=[Depends(verify_auth)])
+def change_password(req: ChangePasswordReq):
+    global GLOBAL_SPEKTOR
+    if len(req.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+    if req.password in ("", "admin"):
+        raise HTTPException(status_code=400, detail="Choose a password other than the default.")
+    spektor = get_spektor()
+    cfg = spektor.config
+    sec = cfg.setdefault("security", {})
+    sec["enabled"] = True
+    if req.username:
+        sec["username"] = req.username
+    sec["password"] = req.password
+    try:
+        with open(CONFIG_PATH, "w") as f:
+            yaml.safe_dump(cfg, f)
+        GLOBAL_SPEKTOR = MediaSpektor(CONFIG_PATH)
+        logger.info("Dashboard password updated.")
         return {"success": True}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -2878,7 +2916,7 @@ def main() -> None:
     else:
         logger.info("Starting MediaSpektor Self-Hosted Web App...")
         import uvicorn
-        uvicorn.run(app, host=args.host, port=args.port)
+        uvicorn.run(app, host=args.host, port=args.port, proxy_headers=True, forwarded_allow_ips="*")
 
 
 if __name__ == "__main__":

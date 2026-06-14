@@ -5,6 +5,18 @@ All notable changes to **MediaSpektor** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to a simple `v0.x` release line.
 
+## [v1.1.0] - 2026-06-13
+
+### Added
+- **Dashboard Security settings section** — enable login and set the username/password directly in Settings (previously only editable in `config.yaml`).
+- **First-run forced password change** — when the dashboard is still on the default `admin` password, a non-dismissable prompt requires setting a strong one (min 6 chars) before continuing, via a new `/api/change-password` endpoint.
+
+### Fixed
+- **Saving Settings no longer disables auth.** The settings form omitted the `security` block, so saving wiped it (turning authentication off and losing the password). The Security section now includes it, and `/api/config` preserves the existing `security` block if a client omits it.
+
+### Security
+- The session cookie is marked **`Secure`** when the dashboard is served over HTTPS, and uvicorn now honors proxy headers (`X-Forwarded-Proto`) so HTTPS is detected behind a reverse proxy.
+
 ## [v1.0.3] - 2026-06-13
 
 ### Security

@@ -111,7 +111,7 @@
                     </div>
                 </div>
                 <div class="version-footer">
-                    MediaSpektor v1.0.3
+                    MediaSpektor v1.1.0
                 </div>
             </section>
 
@@ -125,7 +125,7 @@
                     <!-- Cards injected here -->
                 </div>
                 <div class="version-footer">
-                    MediaSpektor v1.0.3
+                    MediaSpektor v1.1.0
                 </div>
             </section>
 
@@ -139,13 +139,44 @@
                     <!-- Cards injected here -->
                 </div>
                 <div class="version-footer">
-                    MediaSpektor v1.0.3
+                    MediaSpektor v1.1.0
                 </div>
             </section>
 
             <!-- Tab: Settings -->
             <section id="tab-settings" class="tab-pane">
                 <form id="settings-form">
+                    <!-- Section: Security -->
+                    <div class="panel settings-section" style="margin-bottom: 2rem;">
+                        <div class="panel-header">
+                            <h3><i class="fa-solid fa-lock"></i> Dashboard Security</h3>
+                        </div>
+                        <div class="panel-body grid-2">
+                            <div class="card-glass settings-card-group" style="grid-column: 1/-1;">
+                                <div class="group-header">
+                                    <h4>Login</h4>
+                                    <label class="switch">
+                                        <input type="checkbox" id="sec-enabled">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="form-group-grid">
+                                    <div class="form-group">
+                                        <label for="sec-username">Username</label>
+                                        <input type="text" id="sec-username" placeholder="admin" autocomplete="username">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="sec-password">Password</label>
+                                        <input type="password" id="sec-password" placeholder="Set a strong password" autocomplete="new-password">
+                                    </div>
+                                    <p class="warning-text" style="grid-column: 1/-1; font-size: 0.8rem; color: var(--text-3); margin: 0;">
+                                        When enabled, the dashboard requires this login. It protects your server tokens and the ability to archive media — use a strong, unique password.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Section: Media Servers -->
                     <div class="panel settings-section" style="margin-bottom: 2rem;">
                         <div class="panel-header">
@@ -414,7 +445,7 @@
                     </div>
                 </form>
                 <div class="version-footer">
-                    MediaSpektor v1.0.3
+                    MediaSpektor v1.1.0
                 </div>
             </section>
         </main>
@@ -489,6 +520,30 @@
                     <button id="btn-confirm-execute" class="btn btn-danger">Confirm</button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Forced first-run password change (no dismiss) -->
+    <div id="modal-password" class="login-overlay">
+        <div class="login-card glass">
+            <div class="login-header">
+                <img src="/static/mediaspektor-icon.svg" class="login-logo" alt="MediaSpektor">
+                <h2>Secure your dashboard</h2>
+                <p class="catchphrase">You're still on the default password. Set a strong one to protect your server tokens and media.</p>
+            </div>
+            <form id="force-password-form">
+                <div class="form-group" style="margin-bottom: 1.25rem;">
+                    <label for="force-username">Username</label>
+                    <input type="text" id="force-username" value="admin" autocomplete="username">
+                </div>
+                <div class="form-group" style="margin-bottom: 1.75rem;">
+                    <label for="force-password">New password</label>
+                    <input type="password" id="force-password" required minlength="6" placeholder="At least 6 characters" autocomplete="new-password">
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; padding: 0.9rem;">
+                    <i class="fa-solid fa-lock"></i> Set password
+                </button>
+            </form>
         </div>
     </div>
 

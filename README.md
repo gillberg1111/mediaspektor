@@ -188,6 +188,7 @@ Open `http://localhost:5000` in your web browser to access the dashboard.
 - 📝 **Live Activity Log Console**: Follow log output in real-time.
 - ⚙️ **Config Manager**: Edit your configuration directly in the browser via structured Settings fields.
 - 📲 **Installable (PWA)**: Add to Home Screen on iOS/Android for an app-like launch with the MediaSpektor icon.
+- 🔒 **Dashboard Security**: Optional username/password login (managed in Settings); on first run you're required to replace the default password before continuing.
 
 ---
 

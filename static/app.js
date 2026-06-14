@@ -36,6 +36,54 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    function showForcePassword() {
+        const o = document.getElementById("modal-password");
+        if (o) o.classList.add("active");
+    }
+    function hideForcePassword() {
+        const o = document.getElementById("modal-password");
+        if (o) o.classList.remove("active");
+    }
+
+    // First-run: if the dashboard is still on the default password, force a change.
+    function checkForcedPasswordChange() {
+        fetch("/api/config")
+            .then(res => (res.ok ? res.json() : null))
+            .then(cfg => {
+                const sec = cfg && cfg.security;
+                if (sec && sec.enabled && (sec.password === "admin" || sec.password === "")) {
+                    showForcePassword();
+                }
+            })
+            .catch(() => {});
+    }
+
+    const forceForm = document.getElementById("force-password-form");
+    if (forceForm) {
+        forceForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const username = document.getElementById("force-username").value.trim() || "admin";
+            const password = document.getElementById("force-password").value;
+            try {
+                const resp = await originalFetch("/api/change-password", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, password })
+                });
+                if (resp.ok) {
+                    showToast("Password updated.", "success");
+                    hideForcePassword();
+                    document.getElementById("force-password").value = "";
+                } else {
+                    const d = await resp.json().catch(() => ({}));
+                    showToast(d.detail || "Could not set password.", "error");
+                }
+            } catch (err) {
+                showToast("Connection failed while setting password.", "error");
+            }
+        });
+    }
+
     // Login Form Event Listener
     const loginForm = document.getElementById("login-form");
     if (loginForm) {
@@ -54,6 +102,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
 
                 if (response.ok) {
+                    const data = await response.json().catch(() => ({}));
                     showToast("Dashboard unlocked successfully!");
                     hideLoginScreen();
                     usernameInput.value = "";
@@ -67,6 +116,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     } else if (document.querySelector('.nav-item[data-tab="settings"]').classList.contains('active')) {
                         loadSettings();
                     }
+                    if (data.must_change_password) showForcePassword();
                 } else {
                     const data = await response.json();
                     showToast(data.detail || "Invalid credentials", "error");
@@ -675,6 +725,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 document.getElementById("aes-border-color").value = (aesthetics.border_color || [62, 207, 142, 255]).join(", ");
                 document.getElementById("aes-font-name").value = aesthetics.font_name || "Arial";
                 document.getElementById("aes-font-size").value = aesthetics.font_size_ratio !== undefined ? aesthetics.font_size_ratio : 0.045;
+
+                // Populate Security
+                const security = config.security || {};
+                document.getElementById("sec-enabled").checked = security.enabled !== undefined ? !!security.enabled : true;
+                document.getElementById("sec-username").value = security.username || "admin";
+                document.getElementById("sec-password").value = security.password || "";
             })
             .catch(err => {
                 console.error("Failed to load settings:", err);
@@ -758,12 +814,21 @@ document.addEventListener("DOMContentLoaded", () => {
                 backup_original_media: document.getElementById("safety-backup").checked,
                 backup_directory: document.getElementById("safety-backup-dir").value.trim(),
                 allow_automated_archival: document.getElementById("safety-allow-auto").checked
+            },
+            security: {
+                enabled: document.getElementById("sec-enabled").checked,
+                username: document.getElementById("sec-username").value.trim() || "admin",
+                password: document.getElementById("sec-password").value
             }
         };
 
         // Basic verification
         if (config.aesthetics.banner_color.length !== 4 || config.aesthetics.border_color.length !== 4) {
             showToast("Banner and border colors must be 4 numbers (RGBA, e.g. 255, 255, 255, 255).", "warning");
+            return;
+        }
+        if (config.security.enabled && (config.security.password || "").length < 6) {
+            showToast("Set a password of at least 6 characters to enable dashboard security.", "warning");
             return;
         }
 
@@ -794,4 +859,5 @@ document.addEventListener("DOMContentLoaded", () => {
     // -----------------------------------------------------------------------
     loadDashboardData();
     startLogPolling();
+    checkForcedPasswordChange();
 });
