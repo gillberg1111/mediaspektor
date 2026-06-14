@@ -1437,5 +1437,161 @@ class TestLibraryScanScoping(unittest.TestCase):
         self.assertEqual(mock_req.call_args.args[1], "Library/Refresh")
 
 
+class TestBulkPlan(unittest.TestCase):
+    def setUp(self):
+        self.temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.temp_db.close()
+        self.temp_config = tempfile.NamedTemporaryFile(suffix=".yaml", delete=False)
+        self.temp_config.close()
+        import yaml
+        with open(self.temp_config.name, "w") as f:
+            yaml.safe_dump({"servers": [], "rules": {}, "safety": {"dry_run": True}}, f)
+        self.spektor = MediaSpektor(self.temp_config.name)
+        self.spektor.db = Database(self.temp_db.name)
+
+    def tearDown(self):
+        for p in (self.temp_db.name, self.temp_config.name):
+            if os.path.exists(p):
+                os.unlink(p)
+
+    def test_bulk_episode_plan_counts(self):
+        mock = MagicMock()
+        mock.server_type = "plex"
+        mock.get_seasons.return_value = [{"id": "s1"}]
+        mock.get_episodes.return_value = [
+            {"id": "1", "original_size": 100_000_000, "is_watched": True},
+            {"id": "2", "original_size": 200_000_000, "is_watched": False},
+            {"id": "3", "original_size": 0, "is_watched": True},
+        ]
+        self.spektor.servers = [mock]
+        self.spektor.db.item_exists = MagicMock(return_value=False)
+
+        plan = self.spektor.bulk_episode_plan("plex", "show1")
+        self.assertEqual(plan["count"], 3)
+        self.assertEqual(plan["unwatched"], 1)
+        self.assertEqual(plan["total_size_bytes"], 300_000_000)
+        self.assertEqual(plan["already_archived"], 0)
+
+    def test_bulk_episode_plan_excludes_archived(self):
+        mock = MagicMock()
+        mock.server_type = "plex"
+        mock.get_seasons.return_value = [{"id": "s1"}]
+        mock.get_episodes.return_value = [
+            {"id": "1", "original_size": 100_000_000, "is_watched": True},
+            {"id": "2", "original_size": 200_000_000, "is_watched": False},
+        ]
+        self.spektor.servers = [mock]
+        self.spektor.db.item_exists = lambda st, iid: iid == "1"
+
+        plan = self.spektor.bulk_episode_plan("plex", "show1")
+        self.assertEqual(plan["count"], 1)
+        self.assertEqual(plan["already_archived"], 1)
+        self.assertEqual(plan["item_ids"], ["2"])
+
+
+class TestBulkArchive(unittest.TestCase):
+    def setUp(self):
+        self.temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.temp_db.close()
+        self.temp_config = tempfile.NamedTemporaryFile(suffix=".yaml", delete=False)
+        self.temp_config.close()
+        import yaml
+        with open(self.temp_config.name, "w") as f:
+            yaml.safe_dump({"servers": [], "rules": {}, "safety": {"dry_run": True}}, f)
+        self.spektor = MediaSpektor(self.temp_config.name)
+        self.spektor.db = Database(self.temp_db.name)
+
+    def tearDown(self):
+        for p in (self.temp_db.name, self.temp_config.name):
+            if os.path.exists(p):
+                os.unlink(p)
+
+    def test_bulk_archive_calls_archive_item(self):
+        self.spektor.archive_item = MagicMock(return_value={"success": True})
+        res = self.spektor.bulk_archive("plex", ["1", "2"])
+        self.assertEqual(self.spektor.archive_item.call_count, 2)
+        self.assertEqual(len(res["archived"]), 2)
+        self.assertEqual(len(res["errors"]), 0)
+
+    def test_bulk_archive_reports_errors(self):
+        def side_effect(st, iid):
+            if iid == "2":
+                return {"success": False, "error": "fail"}
+            return {"success": True}
+        self.spektor.archive_item = MagicMock(side_effect=side_effect)
+        res = self.spektor.bulk_archive("plex", ["1", "2"])
+        self.assertEqual(len(res["archived"]), 1)
+        self.assertEqual(len(res["errors"]), 1)
+        self.assertEqual(res["errors"][0]["item_id"], "2")
+
+
+class TestShowTotalSize(unittest.TestCase):
+    def setUp(self):
+        self.temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.temp_db.close()
+        self.temp_config = tempfile.NamedTemporaryFile(suffix=".yaml", delete=False)
+        self.temp_config.close()
+        import yaml
+        with open(self.temp_config.name, "w") as f:
+            yaml.safe_dump({"servers": [], "rules": {}, "safety": {"dry_run": True}}, f)
+        self.spektor = MediaSpektor(self.temp_config.name)
+        self.spektor.db = Database(self.temp_db.name)
+
+    def tearDown(self):
+        import mediaspektor
+        mediaspektor._SHOW_SIZE_CACHE.clear()
+        for p in (self.temp_db.name, self.temp_config.name):
+            if os.path.exists(p):
+                os.unlink(p)
+
+    def test_get_show_total_size_populates_cache(self):
+        import mediaspektor
+        mock = MagicMock()
+        mock.server_type = "plex"
+        mock.get_shows.return_value = [{"id": "s1", "title": "Show", "year": 2025}]
+        mock.get_show_total_size.return_value = 500_000_000
+        mock.config = {"libraries": ["TV"]}
+        self.spektor.servers = [mock]
+
+        from fastapi.testclient import TestClient
+        from mediaspektor import app
+        old_spektor = mediaspektor.GLOBAL_SPEKTOR
+        mediaspektor.GLOBAL_SPEKTOR = self.spektor
+        try:
+            client = TestClient(app)
+            resp = client.get("/api/shows")
+            self.assertEqual(resp.status_code, 200)
+            data = resp.json()
+            self.assertEqual(len(data), 1)
+            self.assertEqual(data[0]["total_size"], 500_000_000)
+            self.assertIn(("plex", "s1"), mediaspektor._SHOW_SIZE_CACHE)
+        finally:
+            mediaspektor.GLOBAL_SPEKTOR = old_spektor
+
+    def test_plex_get_show_total_size(self):
+        import mediaspektor
+        with patch("mediaspektor.PlexServer") as mock_ps:
+            mock_se = MagicMock()
+            mock_show = MagicMock()
+            ep1 = MagicMock()
+            ep1.media = [MagicMock()]
+            ep1.media[0].parts = [MagicMock()]
+            ep1.media[0].parts[0].size = 100
+            ep2 = MagicMock()
+            ep2.media = [MagicMock()]
+            ep2.media[0].parts = [MagicMock()]
+            ep2.media[0].parts[0].size = 200
+            mock_show.episodes.return_value = [ep1, ep2]
+            mock_ps.return_value.library = MagicMock()
+            mock_se.fetchItem.return_value = mock_show
+
+            plex = mediaspektor.PlexConnector(
+                {"type": "plex", "url": "http://p", "token": "t", "libraries": ["TV"]}
+            )
+            plex._server = mock_se
+            total = plex.get_show_total_size("123")
+            self.assertEqual(total, 300)
+
+
 if __name__ == "__main__":
     unittest.main()

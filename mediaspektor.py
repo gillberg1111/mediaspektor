@@ -16,6 +16,7 @@ import sqlite3
 import struct
 import sys
 import tempfile
+import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
@@ -38,6 +39,10 @@ HTTP = requests.Session()
 _pool_adapter = requests.adapters.HTTPAdapter(pool_connections=20, pool_maxsize=50)
 HTTP.mount("http://", _pool_adapter)
 HTTP.mount("https://", _pool_adapter)
+
+# Cache of computed per-show total file sizes: {(server_type, show_id): bytes}.
+# Computed once per show per process; reused on every /api/shows revalidate.
+_SHOW_SIZE_CACHE: dict[tuple, int] = {}
 
 
 def _parse_iso_date(date_str: str | None) -> datetime | None:
@@ -878,6 +883,19 @@ class PlexConnector(BaseMediaServer):
             logger.error("Plex get_episodes error: %s", exc)
         return results
 
+    def get_show_total_size(self, show_id: str) -> int:
+        try:
+            show = self._server.fetchItem(self._resolve_id(show_id))
+            total = 0
+            for ep in show.episodes():
+                for media in ep.media:
+                    for part in media.parts:
+                        total += part.size
+            return total
+        except Exception as exc:
+            logger.error("Plex get_show_total_size error: %s", exc)
+            return 0
+
     def get_item_metadata(self, item_id: str) -> dict[str, Any]:
         item = self._server.fetchItem(self._resolve_id(item_id))
         if item.type == "movie":
@@ -1346,6 +1364,25 @@ class JellyfinConnector(BaseMediaServer):
             logger.error("Jellyfin get_episodes for season %s: %s", season_id, exc)
         return results
 
+    def get_show_total_size(self, show_id: str) -> int:
+        try:
+            resp = self._get(f"/Items", params={
+                "ParentId": show_id,
+                "Recursive": "true",
+                "IncludeItemTypes": "Episode",
+                "Fields": "MediaSources",
+                "UserId": self.user_id
+            })
+            total = 0
+            for item in resp.json().get("Items", []):
+                sources = item.get("MediaSources", [])
+                if sources:
+                    total += sources[0].get("Size", 0)
+            return total
+        except Exception as exc:
+            logger.error("Jellyfin get_show_total_size error: %s", exc)
+            return 0
+
     def get_item_metadata(self, item_id: str) -> dict[str, Any]:
         self._ensure_auth()
         item = self._get(f"/Users/{self.user_id}/Items/{item_id}").json()
@@ -1725,6 +1762,24 @@ class EmbyConnector(BaseMediaServer):
         except Exception as exc:
             logger.error("Emby get_episodes for season %s: %s", season_id, exc)
         return results
+
+    def get_show_total_size(self, show_id: str) -> int:
+        try:
+            resp = self._get(f"/Users/{self.user_id}/Items", params={
+                "ParentId": show_id,
+                "Recursive": "true",
+                "IncludeItemTypes": "Episode",
+                "Fields": "MediaSources"
+            })
+            total = 0
+            for item in resp.json().get("Items", []):
+                sources = item.get("MediaSources", [])
+                if sources:
+                    total += sources[0].get("Size", 0)
+            return total
+        except Exception as exc:
+            logger.error("Emby get_show_total_size error: %s", exc)
+            return 0
 
     def get_item_metadata(self, item_id: str) -> dict[str, Any]:
         item = self._get(f"/Users/{self.user_id}/Items/{item_id}").json()
@@ -2814,6 +2869,23 @@ class MediaSpektor:
                 except Exception as exc:
                     logger.warning("Library scan failed for %s: %s", server.server_type, exc)
 
+            # PHASE 4 — re-apply the badged poster LAST. The file swap makes Jellyfin/Emby
+            # re-extract the Primary image from the dummy video, clobbering the PHASE-1 upload;
+            # uploading again after the swap+scan makes our badge the final image.
+            for t in targets:
+                srv = t["server"]
+                if srv.server_type not in ("jellyfin", "emby"):
+                    continue
+                overlay = self.backup_dir / f"{srv.server_type}_{t['local_id']}_poster_overlay.jpg"
+                if not overlay.exists():
+                    continue
+                try:
+                    time.sleep(2)  # let the swap-triggered scan settle first
+                    srv.upload_poster(t["local_id"], str(overlay))
+                    logger.info("Re-applied badged poster on %s for item %s", srv.server_type, t["local_id"])
+                except Exception as exc:
+                    logger.warning("Poster re-apply failed on %s: %s", srv.server_type, exc)
+
             if media_type == "movie" and self.radarr:
                 self.radarr.unmonitor_movie_by_path(file_path, expanded_ids)
             elif media_type == "episode" and self.sonarr:
@@ -2827,6 +2899,38 @@ class MediaSpektor:
             logger.error("Failed to archive item %s: %s", item_id, exc)
             results["error"] = str(exc)
             return results
+
+    def bulk_episode_plan(self, server_type: str, show_id: str, season_id: str | None = None) -> dict[str, Any]:
+        """List episodes that a season/series bulk-Spektor would archive (those not already
+        archived), with counts and total size for the confirmation dialog."""
+        server = next((s for s in self.servers if s.server_type == server_type), None)
+        if not server:
+            return {"error": f"No active {server_type} server."}
+        seasons = [{"id": season_id}] if season_id else server.get_seasons(show_id)
+        to_do, unwatched, total = [], 0, 0
+        already = 0
+        for sea in seasons:
+            for ep in server.get_episodes(show_id, sea["id"]):
+                if self.db.item_exists(server_type, str(ep["id"])):
+                    already += 1
+                    continue
+                to_do.append(str(ep["id"]))
+                total += ep.get("original_size", 0) or 0
+                if not ep.get("is_watched", False):
+                    unwatched += 1
+        return {"item_ids": to_do, "count": len(to_do), "unwatched": unwatched,
+                "already_archived": already, "total_size_bytes": total}
+
+    def bulk_archive(self, server_type: str, item_ids: list[str]) -> dict[str, Any]:
+        """Archive each episode id via archive_item (honors Dry-Run, propagation, etc.)."""
+        results = {"archived": [], "errors": []}
+        for iid in item_ids:
+            res = self.archive_item(server_type, str(iid))
+            if res.get("success"):
+                results["archived"].append(iid)
+            else:
+                results["errors"].append({"item_id": iid, "error": res.get("error")})
+        return results
 
 
 # ---------------------------------------------------------------------------
@@ -3072,6 +3176,13 @@ def get_web_shows():
             if key not in by_key:
                 by_key[key] = s
                 order.append(key)
+                cache_key = (server.server_type, s["id"])
+                if cache_key not in _SHOW_SIZE_CACHE:
+                    try:
+                        _SHOW_SIZE_CACHE[cache_key] = server.get_show_total_size(s["id"])
+                    except Exception:
+                        _SHOW_SIZE_CACHE[cache_key] = 0
+                s["total_size"] = _SHOW_SIZE_CACHE[cache_key]
     return [by_key[k] for k in order]
 
 @app.get("/api/shows/{server_type}/{show_id}/seasons", dependencies=[Depends(verify_auth)])
@@ -3149,6 +3260,25 @@ def run_bg_restore(server_type: str, item_id: str):
 def trigger_spektor(req: ActionReq, bg_tasks: BackgroundTasks):
     bg_tasks.add_task(run_bg_spektor, req.server_type, str(req.item_id))
     return {"success": True, "message": "Archival process queued as background task."}
+
+@app.get("/api/shows/{server_type}/{show_id}/plan", dependencies=[Depends(verify_auth)])
+def bulk_plan(server_type: str, show_id: str, season_id: str | None = None):
+    return get_spektor().bulk_episode_plan(server_type, show_id, season_id)
+
+class BulkSpektorReq(BaseModel):
+    server_type: str
+    show_id: str
+    season_id: str | None = None
+
+def run_bg_bulk(server_type: str, show_id: str, season_id: str | None):
+    spektor = get_spektor()
+    plan = spektor.bulk_episode_plan(server_type, show_id, season_id)
+    spektor.bulk_archive(server_type, plan.get("item_ids", []))
+
+@app.post("/api/spektor-bulk", dependencies=[Depends(verify_auth)])
+def trigger_bulk(req: BulkSpektorReq, bg_tasks: BackgroundTasks):
+    bg_tasks.add_task(run_bg_bulk, req.server_type, req.show_id, req.season_id)
+    return {"success": True, "message": "Bulk archival queued as background task."}
 
 @app.post("/api/restore", dependencies=[Depends(verify_auth)])
 def trigger_restore(req: ActionReq, bg_tasks: BackgroundTasks):

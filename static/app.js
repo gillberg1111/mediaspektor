@@ -2,6 +2,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // Current state variables
     let currentMovies = [];
     let currentShows = [];
+    let movieSort = { key: "size", dir: "desc" };
+    let showSort  = { key: "size", dir: "desc" };
     let logInterval = null;
     let logPaused = false;
 
@@ -245,6 +247,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const showSearch = document.getElementById("show-search");
             if (movieSearch) movieSearch.value = "";
             if (showSearch) showSearch.value = "";
+            if (currentMovies.length) renderMovies(currentMovies);
+            if (currentShows.length) renderShows(currentShows);
 
             // Toggle active menu item
             navItems.forEach(nav => nav.classList.remove("active"));
@@ -418,7 +422,19 @@ document.addEventListener("DOMContentLoaded", () => {
             });
     }
 
+    function sortItems(list, sort) {
+        const arr = list.slice();
+        arr.sort((a, b) => {
+            let cmp;
+            if (sort.key === "size") cmp = (a.total_size ?? a.original_size ?? 0) - (b.total_size ?? b.original_size ?? 0);
+            else cmp = (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: "base" });
+            return sort.dir === "asc" ? cmp : -cmp;
+        });
+        return arr;
+    }
+
     function renderMovies(movies) {
+        const sorted = sortItems(movies, movieSort);
         const grid = document.getElementById("movies-grid");
         grid.innerHTML = "";
 
@@ -427,7 +443,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        movies.forEach(movie => {
+        sorted.forEach(movie => {
             const card = document.createElement("div");
             card.className = "media-card";
             
@@ -508,6 +524,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderShows(shows) {
+        const sorted = sortItems(shows, showSort);
         const grid = document.getElementById("shows-grid");
         grid.innerHTML = "";
 
@@ -516,7 +533,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        shows.forEach(show => {
+        sorted.forEach(show => {
             const card = document.createElement("div");
             card.className = "media-card";
             
@@ -551,9 +568,54 @@ document.addEventListener("DOMContentLoaded", () => {
         renderShows(filtered);
     });
 
+    function bindSortPill(pillId, sortState, rerender) {
+        const pill = document.getElementById(pillId);
+        if (!pill) return;
+        pill.querySelectorAll(".sort-seg").forEach(seg => {
+            seg.addEventListener("click", () => {
+                const key = seg.dataset.key;
+                if (sortState.key === key) {
+                    sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
+                } else {
+                    sortState.key = key;
+                    sortState.dir = key === "size" ? "desc" : "asc";
+                }
+                pill.querySelectorAll(".sort-seg").forEach(s => s.classList.toggle("active", s.dataset.key === sortState.key));
+                const arrow = seg.querySelector(".sort-arrow");
+                pill.querySelectorAll(".sort-arrow").forEach(a => a.textContent = "");
+                if (arrow) arrow.textContent = sortState.dir === "asc" ? "↑" : "↓";
+                const titleSeg = pill.querySelector('.sort-seg[data-key="title"]');
+                if (titleSeg && sortState.key === "title") titleSeg.firstChild.nodeValue = sortState.dir === "asc" ? "A–Z" : "Z–A";
+                else if (titleSeg) titleSeg.firstChild.nodeValue = "A–Z";
+                rerender();
+            });
+        });
+    }
+    bindSortPill("movie-sort", movieSort, () => renderMovies(currentMovies));
+    bindSortPill("show-sort", showSort, () => renderShows(currentShows));
+
+    function initSortPill(pillId) {
+        const pill = document.getElementById(pillId);
+        if (!pill) return;
+        pill.querySelectorAll(".sort-seg").forEach(s => s.classList.toggle("active", s.dataset.key === "size"));
+        pill.querySelectorAll(".sort-arrow").forEach(a => a.textContent = "");
+        const sizeSeg = pill.querySelector('.sort-seg[data-key="size"]');
+        if (sizeSeg) { const arrow = sizeSeg.querySelector(".sort-arrow"); if (arrow) arrow.textContent = "↓"; }
+        const titleSeg = pill.querySelector('.sort-seg[data-key="title"]');
+        if (titleSeg) titleSeg.firstChild.nodeValue = "A–Z";
+    }
+    initSortPill("movie-sort");
+    initSortPill("show-sort");
+
     // TV Show Seasons Navigation
     function openSeasonsModal(serverType, showId, showTitle) {
         document.getElementById("seasons-title").textContent = `${showTitle} — Seasons`;
+        const btn = document.getElementById("btn-bulk-series");
+        if (btn) {
+            btn.dataset.serverType = serverType;
+            btn.dataset.showId = showId;
+            btn.dataset.showTitle = showTitle;
+        }
         const grid = document.getElementById("seasons-grid");
         grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted);"><i class="fa-solid fa-spinner fa-spin fa-2x"></i></div>';
         
@@ -595,6 +657,14 @@ document.addEventListener("DOMContentLoaded", () => {
     // Season Episodes Table Navigation
     function openEpisodesModal(serverType, showId, showTitle, seasonId, seasonTitle) {
         document.getElementById("episodes-title").textContent = `${showTitle} — ${seasonTitle}`;
+        const btn = document.getElementById("btn-bulk-season");
+        if (btn) {
+            btn.dataset.serverType = serverType;
+            btn.dataset.showId = showId;
+            btn.dataset.showTitle = showTitle;
+            btn.dataset.seasonId = seasonId;
+            btn.dataset.seasonTitle = seasonTitle;
+        }
         const list = document.getElementById("episodes-list");
         list.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);"><i class="fa-solid fa-spinner fa-spin fa-2x"></i></td></tr>';
         
@@ -993,6 +1063,61 @@ document.addEventListener("DOMContentLoaded", () => {
             showToast("Network error saving configuration.", "error");
         });
     });
+
+    window.bulkSpektor = function(serverType, showId, seasonId, label) {
+        const url = `/api/shows/${serverType}/${showId}/plan` + (seasonId ? '?season_id=' + encodeURIComponent(seasonId) : '');
+        fetch(url)
+            .then(res => res.json())
+            .then(plan => {
+                if (plan.error) {
+                    showToast(plan.error, "error");
+                    return;
+                }
+                if (plan.count === 0) {
+                    showToast("Nothing to Spektor (all already archived).", "warning");
+                    return;
+                }
+                let msg = `Spektor ${plan.count} episodes of ${label} (~${formatBytes(plan.total_size_bytes)})?`;
+                if (plan.unwatched > 0) {
+                    msg += `\n\n⚠ ${plan.unwatched} of these are UNWATCHED and will be replaced too.`;
+                }
+                if (!confirm(msg)) return;
+                fetch("/api/spektor-bulk", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ server_type: serverType, show_id: showId, season_id: seasonId || null })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast("Bulk Spektor queued. Check dashboard log.", "success");
+                        const modal = document.getElementById("modal-episodes");
+                        const modal2 = document.getElementById("modal-seasons");
+                        if (modal) closeModal(modal);
+                        if (modal2) closeModal(modal2);
+                    } else {
+                        showToast("Error queueing bulk Spektor.", "error");
+                    }
+                })
+                .catch(() => showToast("Server error during bulk Spektor request.", "error"));
+            })
+            .catch(() => showToast("Failed to fetch bulk plan.", "error"));
+    };
+
+    window.bulkSpektorHandler = function(type) {
+        let btn, label, seasonId;
+        if (type === "series") {
+            btn = document.getElementById("btn-bulk-series");
+            seasonId = null;
+            label = btn ? btn.dataset.showTitle : "series";
+        } else {
+            btn = document.getElementById("btn-bulk-season");
+            seasonId = btn ? btn.dataset.seasonId : null;
+            label = btn ? btn.dataset.seasonTitle : "season";
+        }
+        if (!btn) return;
+        window.bulkSpektor(btn.dataset.serverType, btn.dataset.showId, seasonId, label);
+    };
 
     // -----------------------------------------------------------------------
     // Initial Load

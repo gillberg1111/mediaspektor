@@ -376,6 +376,24 @@ body {
    Search
    -------------------------------------------------------------------------- */
 .search-bar { position: relative; margin-bottom: 2rem; max-width: 420px; }
+.search-bar { display: flex; align-items: center; gap: 0.6rem; max-width: 560px; flex-wrap: wrap; }
+.search-bar .search-input { flex: 1; }
+
+.sort-pill {
+    display: inline-flex; flex-shrink: 0; padding: 3px; gap: 2px;
+    background: var(--glass-2); border: 1px solid var(--line); border-radius: 999px;
+    -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+}
+.sort-seg {
+    border: 0; background: transparent; cursor: pointer;
+    font-family: var(--sans); font-size: 0.76rem; font-weight: 600; color: var(--text-3);
+    padding: 0.4rem 0.85rem; border-radius: 999px; white-space: nowrap;
+    transition: color var(--t-fast), background var(--t-fast);
+}
+.sort-seg:hover { color: var(--text); }
+.sort-seg.active { color: #04231f; background: var(--accent); }
+.sort-arrow { font-size: 0.7rem; opacity: 0.9; }
+
 .search-icon { position: absolute; left: 1.05rem; top: 50%; transform: translateY(-50%); color: var(--text-3); font-size: 0.82rem; pointer-events: none; }
 .search-input {
     width: 100%;
@@ -391,6 +409,9 @@ body {
 }
 .search-input::placeholder { color: var(--text-4); }
 .search-input:focus { outline: none; border-color: rgba(62,207,142,0.5); background: var(--bg-2); }
+.search-input { -webkit-appearance: none; appearance: none; }
+.search-input::-webkit-search-decoration { -webkit-appearance: none; }
+.search-input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; cursor: pointer; }
 
 /* --------------------------------------------------------------------------
    Media grid — cinematic, artwork-forward
@@ -526,7 +547,8 @@ body {
 }
 .modal-lg { max-width: 900px; }
 .modal-sm { max-width: 440px; }
-.modal-header { padding: 1.5rem 1.7rem; border-bottom: 1px solid var(--line); }
+.modal-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.5rem 3.2rem 1.5rem 1.7rem; border-bottom: 1px solid var(--line); }
+.modal-header h2 { margin: 0; }
 .modal-header h2 { font-family: var(--sans); font-weight: 600; font-size: 1.35rem; letter-spacing: -0.02em; color: var(--text); }
 .modal-body { padding: 1.7rem; }
 .modal-body.text-center { text-align: center; }

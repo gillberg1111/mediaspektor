@@ -116,7 +116,7 @@
                     </div>
                 </div>
                 <div class="version-footer">
-                    MediaSpektor v1.3.1
+                    MediaSpektor v1.4.0
                 </div>
             </section>
 
@@ -124,13 +124,18 @@
             <section id="tab-movies" class="tab-pane">
                 <div class="search-bar">
                     <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                    <input type="text" id="movie-search" placeholder="Search watched movies..." class="search-input">
+                    <input type="search" id="movie-search" placeholder="Search watched movies..." class="search-input"
+                           dir="ltr" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+                    <div class="sort-pill" id="movie-sort" role="group" aria-label="Sort movies">
+                        <button type="button" class="sort-seg active" data-key="title">A–Z</button>
+                        <button type="button" class="sort-seg" data-key="size">Size <span class="sort-arrow">↓</span></button>
+                    </div>
                 </div>
                 <div id="movies-grid" class="media-grid">
                     <!-- Cards injected here -->
                 </div>
                 <div class="version-footer">
-                    MediaSpektor v1.3.1
+                    MediaSpektor v1.4.0
                 </div>
             </section>
 
@@ -138,13 +143,18 @@
             <section id="tab-shows" class="tab-pane">
                 <div class="search-bar">
                     <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                    <input type="text" id="show-search" placeholder="Search watched TV shows..." class="search-input">
+                    <input type="search" id="show-search" placeholder="Search watched TV shows..." class="search-input"
+                           dir="ltr" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+                    <div class="sort-pill" id="show-sort" role="group" aria-label="Sort TV shows">
+                        <button type="button" class="sort-seg active" data-key="title">A–Z</button>
+                        <button type="button" class="sort-seg" data-key="size">Size <span class="sort-arrow">↓</span></button>
+                    </div>
                 </div>
                 <div id="shows-grid" class="media-grid">
                     <!-- Cards injected here -->
                 </div>
                 <div class="version-footer">
-                    MediaSpektor v1.3.1
+                    MediaSpektor v1.4.0
                 </div>
             </section>
 
@@ -450,7 +460,7 @@
                     </div>
                 </form>
                 <div class="version-footer">
-                    MediaSpektor v1.3.1
+                    MediaSpektor v1.4.0
                 </div>
             </section>
         </main>
@@ -464,6 +474,7 @@
             <span class="close-modal" data-modal="modal-seasons">&times;</span>
             <div class="modal-header">
                 <h2 id="seasons-title">Show Seasons</h2>
+                <button id="btn-bulk-series" class="btn btn-primary btn-xs" onclick="window.bulkSpektorHandler('series')"><i class="fa-solid fa-ghost"></i> Spektor Entire Series</button>
             </div>
             <div class="modal-body">
                 <div id="seasons-grid" class="media-grid">
@@ -479,6 +490,7 @@
             <span class="close-modal" data-modal="modal-episodes">&times;</span>
             <div class="modal-header">
                 <h2 id="episodes-title">Season Episodes</h2>
+                <button id="btn-bulk-season" class="btn btn-primary btn-xs" onclick="window.bulkSpektorHandler('season')"><i class="fa-solid fa-ghost"></i> Spektor Entire Season</button>
             </div>
             <div class="modal-body">
                 <div class="table-container">

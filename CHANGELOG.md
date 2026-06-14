@@ -5,6 +5,16 @@ All notable changes to **MediaSpektor** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to a simple `v0.x` release line.
 
+## [v1.4.0] - 2026-06-14
+
+### Added
+- **Spektor an entire season or entire series.** New "Spektor Entire Season" (episodes view) and "Spektor Entire Series" (seasons view) actions archive all episodes at once. The confirm dialog shows the episode count and total size, and **warns when unwatched episodes are included** before you proceed. Honors Dry-Run. (Issue #2)
+- **Sort Movies & TV.** A sleek segmented pill (A–Z ⇄ Z–A · Size ↓ ⇄ Size ↑, default largest-first) sits beside the search box. Series are sorted by total size (summed from their episodes, computed once and cached). (Issue #3)
+
+### Fixed
+- **Search field stale text / caret jumping to the front.** The Movies/TV search inputs are now hardened (`type="search"`, explicit LTR, autocomplete/autocorrect/autocapitalize/spellcheck off) and the grid re-syncs when the box is cleared. (Issue #4)
+- **Newly Spektored items showed an un-badged poster in Jellyfin/Emby.** The file swap made Jellyfin/Emby re-extract the poster from the dummy video, overwriting the badge uploaded earlier in the run. The badged poster is now re-applied as the final step (after the swap and scan settle), so it sticks. (Issue #5)
+
 ## [v1.3.1] - 2026-06-14
 
 ### Fixed
