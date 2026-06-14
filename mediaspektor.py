@@ -1869,7 +1869,7 @@ class PosterOverlay:
         self.border_color = tuple(
             aest.get("border_color", [62, 207, 142, 255])
         )
-        self.font_name = aest.get("font_name", "Arial")
+        self.font_name = aest.get("font_name", "DejaVuSans.ttf")
         self.font_size_ratio = aest.get("font_size_ratio", 0.045)
 
     def apply_overlay(
@@ -1902,10 +1902,13 @@ class PosterOverlay:
             try:
                 font = ImageFont.truetype(self.font_name, font_size)
             except (OSError, IOError):
-                logger.debug(
-                    "Font '%s' not found, using default", self.font_name
-                )
-                font = ImageFont.load_default()
+                try:
+                    font = ImageFont.truetype("DejaVuSans.ttf", font_size)
+                except (OSError, IOError):
+                    logger.debug(
+                        "Font '%s' and DejaVuSans not found, using default bitmap", self.font_name
+                    )
+                    font = ImageFont.load_default()
 
             # Center text
             bbox = draw.textbbox((0, 0), text, font=font)

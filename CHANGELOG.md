@@ -5,6 +5,11 @@ All notable changes to **MediaSpektor** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to a simple `v0.x` release line.
 
+## [v1.1.2] - 2026-06-13
+
+### Fixed
+- **Illegible tiny text on poster overlays.** The script previously defaulted to searching the system for `Arial`, which is unavailable on Linux/Docker by default. This caused Pillow to silently fall back to an unscalable 11-pixel default bitmap font, rendering the "ARCHIVED" text as a tiny speck. The default font is now explicitly set to `DejaVuSans.ttf`, which was already included in the `v1.0.0` Docker image.
+
 ## [v1.1.1] - 2026-06-13
 
 ### Fixed
