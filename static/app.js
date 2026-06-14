@@ -604,12 +604,19 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("confirm-saved-size").textContent = formatBytes(size);
         
         const execBtn = document.getElementById("btn-confirm-execute");
+        const btnRegenPoster = document.getElementById("btn-regenerate-poster");
+        const btnRegenVideo = document.getElementById("btn-regenerate-video");
+
         if (isRestore) {
             execBtn.className = "btn btn-success";
             execBtn.textContent = "Restore";
+            btnRegenPoster.style.display = "inline-flex";
+            btnRegenVideo.style.display = "inline-flex";
         } else {
             execBtn.className = "btn btn-danger";
             execBtn.textContent = "Confirm Spektor";
+            btnRegenPoster.style.display = "none";
+            btnRegenVideo.style.display = "none";
         }
         
         openModal(modalConfirm);
@@ -651,13 +658,40 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                 }, 2000);
             } else {
-                showToast(data.message || "Failed to start background task.", "error");
+                showToast(`Error: ${data.error || 'Failed to queue action.'}`, "danger");
             }
         })
         .catch(err => {
-            console.error("Action fetch failed:", err);
+            console.error("Action error:", err);
+            showToast("Server error during action request.", "danger");
         });
     });
+
+    window.executeRegenerate = (target) => {
+        if (!pendingAction) return;
+        closeModal(modalConfirm);
+
+        const { serverType, itemId, title } = pendingAction;
+        showToast(`Queued regeneration for '${title}'...`, "warning");
+
+        fetch("/api/regenerate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ server_type: serverType, item_id: itemId, target: target })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast(`Regeneration started successfully. Check dashboard log.`, "success");
+            } else {
+                showToast(`Error: ${data.error || 'Failed to queue regeneration.'}`, "danger");
+            }
+        })
+        .catch(err => {
+            console.error("Regeneration error:", err);
+            showToast("Server error during regeneration request.", "danger");
+        });
+    };
 
     // -----------------------------------------------------------------------
     // Tab 4: Settings Logic

@@ -111,7 +111,7 @@
                     </div>
                 </div>
                 <div class="version-footer">
-                    MediaSpektor v1.1.2
+                    MediaSpektor v1.2.0
                 </div>
             </section>
 
@@ -125,7 +125,7 @@
                     <!-- Cards injected here -->
                 </div>
                 <div class="version-footer">
-                    MediaSpektor v1.1.2
+                    MediaSpektor v1.2.0
                 </div>
             </section>
 
@@ -139,7 +139,7 @@
                     <!-- Cards injected here -->
                 </div>
                 <div class="version-footer">
-                    MediaSpektor v1.1.2
+                    MediaSpektor v1.2.0
                 </div>
             </section>
 
@@ -445,7 +445,7 @@
                     </div>
                 </form>
                 <div class="version-footer">
-                    MediaSpektor v1.1.2
+                    MediaSpektor v1.2.0
                 </div>
             </section>
         </main>
@@ -515,9 +515,11 @@
                         <span id="confirm-saved-size" class="detail-val"></span>
                     </div>
                 </div>
-                <div class="confirm-actions">
-                    <button id="btn-confirm-cancel" class="btn btn-secondary">Cancel</button>
-                    <button id="btn-confirm-execute" class="btn btn-danger">Confirm</button>
+                <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+                    <button id="btn-confirm-cancel" class="btn btn-secondary" onclick="closeModal(document.getElementById('modal-confirm'))">Cancel</button>
+                    <button id="btn-confirm-execute" class="btn btn-primary">Confirm</button>
+                    <button id="btn-regenerate-poster" class="btn btn-info" style="display: none;"><i class="fa-solid fa-image"></i> Fix Poster</button>
+                    <button id="btn-regenerate-video" class="btn btn-info" style="display: none;"><i class="fa-solid fa-video"></i> Fix Video</button>
                 </div>
             </div>
         </div>

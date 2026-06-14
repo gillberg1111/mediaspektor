@@ -5,6 +5,12 @@ All notable changes to **MediaSpektor** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to a simple `v0.x` release line.
 
+## [v1.2.0] - 2026-06-13
+
+### Added
+- **Regenerate Poster Feature:** Added a `Fix Poster` button to the UI for archived items. This reads the clean original poster backup from disk, re-applies the archived overlay (which fixes the tiny text bug from earlier versions), and re-uploads it natively to Plex, Jellyfin, and Emby without fully restoring the item.
+- **Regenerate Video Feature:** Added a `Fix Video` button to the UI for archived items. This rewrites the dummy video and re-applies configured PUID/PGID permissions, providing an easy way to fix broken file ownership manually without a full cycle.
+
 ## [v1.1.2] - 2026-06-13
 
 ### Fixed

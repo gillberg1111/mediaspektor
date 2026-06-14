@@ -2331,6 +2331,101 @@ class MediaSpektor:
 
         return True
 
+    def regenerate_item(self, server_type: str, item_id: str, target: str) -> dict[str, Any]:
+        """Regenerate the poster or dummy video for an already archived item."""
+        results = {"success": False, "messages": []}
+        db_item = self.db.get_item(server_type, item_id)
+        if not db_item:
+            results["error"] = "Item not found in database."
+            return results
+
+        title = db_item.get("title", "Unknown")
+        original_size = db_item.get("original_size_bytes", 0)
+        dummy_size = db_item.get("dummy_size_bytes", 0)
+        gb_saved = max(0, original_size - dummy_size) / (1024 ** 3)
+        media_type = db_item.get("media_type", "movie")
+
+        if target == "poster":
+            backup_poster = db_item.get("backup_poster_path")
+            if not backup_poster or not os.path.exists(backup_poster):
+                results["error"] = "Original poster backup not found."
+                return results
+
+            # Need to find siblings. Since it's archived, we try to use the source server.
+            source_server = self._get_server(server_type)
+            if not source_server:
+                results["error"] = f"Source server {server_type} not available."
+                return results
+
+            source_item = source_server.get_item_details(item_id)
+            if not source_item:
+                results["error"] = "Could not fetch item details from source server."
+                return results
+
+            expanded_ids = self._expand_external_ids(media_type, source_item.get("external_ids", {}))
+            siblings = self._find_item_across_servers(media_type, title, expanded_ids)
+            
+            # Ensure the source item is in the siblings list
+            if not any(s["server_type"] == server_type for s in siblings):
+                siblings.append({
+                    "server_type": server_type,
+                    "server_item_id": item_id,
+                    "title": title
+                })
+
+            success_count = 0
+            for sib in siblings:
+                srv_type = sib["server_type"]
+                srv_id = sib["server_item_id"]
+                server = self._get_server(srv_type)
+                if not server:
+                    continue
+
+                poster_overlay = self.backup_dir / f"{srv_type}_{srv_id}_poster_overlay.jpg"
+                if self.overlay.apply_overlay(backup_poster, str(poster_overlay), gb_saved):
+                    if server.upload_poster(srv_id, str(poster_overlay)):
+                        success_count += 1
+                        results["messages"].append(f"Regenerated poster for {srv_type}")
+                    else:
+                        results["messages"].append(f"Failed to upload poster to {srv_type}")
+                else:
+                    results["messages"].append(f"Failed to apply overlay for {srv_type}")
+
+            results["success"] = success_count > 0
+            return results
+
+        elif target == "video":
+            original_path = db_item.get("original_path")
+            if not original_path:
+                results["error"] = "Original path not found in database."
+                return results
+
+            ext = os.path.splitext(original_path)[1].lower()
+            dummy_b64 = DUMMY_VIDEOS.get(ext) or DUMMY_VIDEOS.get(".mp4")
+            dummy_bytes = base64.b64decode(dummy_b64)
+
+            try:
+                self._replace_with_dummy(original_path, dummy_bytes, backup_target=None)
+                results["success"] = True
+                results["messages"].append("Dummy video regenerated and permissions applied.")
+                logger.info("Regenerated dummy video for '%s'", title)
+            except Exception as exc:
+                results["error"] = f"Failed to regenerate video: {exc}"
+                logger.error(results["error"])
+                return results
+
+            # Trigger library scans
+            for s in self.servers:
+                try:
+                    s.trigger_library_scan()
+                except Exception as exc:
+                    logger.warning("Library scan failed on %s: %s", s.server_type, exc)
+
+            return results
+
+        results["error"] = "Invalid regenerate target."
+        return results
+
     def stats(self) -> dict[str, Any]:
         return self.db.get_stats()
 
@@ -2818,6 +2913,20 @@ def trigger_spektor(req: ActionReq, bg_tasks: BackgroundTasks):
 def trigger_restore(req: ActionReq, bg_tasks: BackgroundTasks):
     bg_tasks.add_task(run_bg_restore, req.server_type, str(req.item_id))
     return {"success": True, "message": "Restoration process queued as background task."}
+
+class RegenerateReq(BaseModel):
+    server_type: str
+    item_id: str | int
+    target: str  # "poster" or "video"
+
+def run_bg_regenerate(server_type: str, item_id: str, target: str):
+    spektor = get_spektor()
+    spektor.regenerate_item(server_type, item_id, target)
+
+@app.post("/api/regenerate", dependencies=[Depends(verify_auth)])
+def trigger_regenerate(req: RegenerateReq, bg_tasks: BackgroundTasks):
+    bg_tasks.add_task(run_bg_regenerate, req.server_type, str(req.item_id), req.target)
+    return {"success": True, "message": f"Regeneration ({req.target}) queued as background task."}
 
 
 # ---------------------------------------------------------------------------
