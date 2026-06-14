@@ -1789,6 +1789,11 @@ class RadarrClient:
         self.headers: dict[str, str] = {"X-Api-Key": self.api_key}
 
     def unmonitor_movie_by_path(self, file_path: str, external_ids: dict | None = None) -> bool:
+        return self.set_movie_monitored(file_path, monitored=False, external_ids=external_ids)
+
+    def set_movie_monitored(self, file_path: str, monitored: bool, external_ids: dict | None = None) -> bool:
+        """Set a movie's monitored flag in Radarr (False on archive so it won't
+        re-download; True to let *Arr fetch the real file again)."""
         try:
             url = urljoin(self.base_url + "/", "api/v3/movie")
             resp = requests.get(url, headers=self.headers, timeout=30)
@@ -1805,19 +1810,31 @@ class RadarrClient:
                 )
                 return False
 
-            if not match.get("monitored", True):
-                logger.info("Radarr: movie id=%s already unmonitored", match["id"])
+            if match.get("monitored", None) == monitored:
+                logger.info("Radarr: movie id=%s already monitored=%s", match["id"], monitored)
                 return True
 
-            match["monitored"] = False
+            match["monitored"] = monitored
             put_url = urljoin(self.base_url + "/", f"api/v3/movie/{match['id']}")
             put_resp = requests.put(put_url, headers=self.headers, json=match, timeout=30)
             put_resp.raise_for_status()
-            logger.info("Radarr: unmonitored movie id=%s title=%s", match["id"], match.get("title"))
+            logger.info("Radarr: set monitored=%s for movie id=%s title=%s", monitored, match["id"], match.get("title"))
             return True
         except Exception as exc:
-            logger.error("Radarr: error unmonitoring movie: %s", exc)
+            logger.error("Radarr: error setting monitored state: %s", exc)
             return False
+
+    def get_movie_monitored(self, file_path: str, external_ids: dict | None = None) -> bool | None:
+        """Return the current monitored flag for the matched movie, or None if not found."""
+        try:
+            url = urljoin(self.base_url + "/", "api/v3/movie")
+            resp = requests.get(url, headers=self.headers, timeout=30)
+            resp.raise_for_status()
+            match = self._match_movie(resp.json(), file_path, external_ids or {})
+            return bool(match.get("monitored")) if match else None
+        except Exception as exc:
+            logger.error("Radarr: error reading monitored state: %s", exc)
+            return None
 
     @staticmethod
     def _match_movie(movies: list[dict], file_path: str, external_ids: dict) -> dict | None:
@@ -1857,100 +1874,83 @@ class SonarrClient:
         self.headers: dict[str, str] = {"X-Api-Key": self.api_key}
 
     def unmonitor_episode_by_path(self, file_path: str, external_ids: dict | None = None) -> bool:
-        try:
-            # Get all series
-            url = urljoin(self.base_url + "/", "api/v3/series")
-            resp = requests.get(url, headers=self.headers, timeout=30)
-            resp.raise_for_status()
-            series_list = resp.json()
+        return self.set_episode_monitored(file_path, monitored=False, external_ids=external_ids)
 
-            norm_path = os.path.normpath(file_path).lower()
-            file_name = os.path.basename(norm_path)
-            path_parts = set(norm_path.split(os.sep))
-            ids = external_ids or {}
-            tvdb = str(ids.get("tvdb")) if ids.get("tvdb") else None
-            imdb = str(ids.get("imdb")).lower() if ids.get("imdb") else None
-            for series in series_list:
-                series_path = (
-                    os.path.normpath(series.get("path", "")).lower()
-                )
-                series_leaf = os.path.basename(series_path) if series_path else ""
-                # Match the series by ID first (robust to Sonarr mounting a different
-                # root than the media server), then by full path prefix, then by the
-                # series folder name appearing as a component of the file path.
-                series_matched = (
-                    (tvdb and str(series.get("tvdbId")) == tvdb)
-                    or (imdb and (series.get("imdbId") or "").lower() == imdb)
-                    or (series_path and norm_path.startswith(series_path))
-                    or (series_leaf and series_leaf in path_parts)
-                )
-                if series_matched:
-                    series_id = series["id"]
+    def _find_episodes(self, file_path: str, external_ids: dict | None = None) -> list[dict]:
+        """Return the Sonarr episode record(s) whose file is this archived path.
+        Matches the series by ID/path/folder-leaf and the file by path/basename."""
+        url = urljoin(self.base_url + "/", "api/v3/series")
+        resp = requests.get(url, headers=self.headers, timeout=30)
+        resp.raise_for_status()
+        series_list = resp.json()
 
-                    # Get episode files for this series to find matching file ID
-                    file_url = urljoin(
-                        self.base_url + "/",
-                        f"api/v3/episodefile?seriesId={series_id}",
-                    )
-                    file_resp = requests.get(
-                        file_url, headers=self.headers, timeout=30
-                    )
-                    file_resp.raise_for_status()
-                    episode_files = file_resp.json()
-
-                    episode_file_id = None
-                    for ep_file in episode_files:
-                        ep_file_path = os.path.normpath(ep_file.get("path", "")).lower()
-                        # Exact path, or same filename when the roots differ.
-                        if ep_file_path == norm_path or os.path.basename(ep_file_path) == file_name:
-                            episode_file_id = ep_file.get("id")
-                            break
-
-                    if not episode_file_id:
-                        continue
-                    
-                    # Get episodes for this series
-                    ep_url = urljoin(
-                        self.base_url + "/",
-                        f"api/v3/episode?seriesId={series_id}",
-                    )
-                    ep_resp = requests.get(
-                        ep_url, headers=self.headers, timeout=30
-                    )
-                    ep_resp.raise_for_status()
-                    episodes = ep_resp.json()
-                    
-                    found_any = False
-                    for ep in episodes:
-                        if ep.get("episodeFileId") == episode_file_id:
-                            ep["monitored"] = False
-                            put_url = urljoin(
-                                self.base_url + "/",
-                                f"api/v3/episode/{ep['id']}",
-                            )
-                            put_resp = requests.put(
-                                put_url,
-                                headers=self.headers,
-                                json=ep,
-                                timeout=30,
-                            )
-                            put_resp.raise_for_status()
-                            logger.info(
-                                "Sonarr: unmonitored episode id=%s path=%s",
-                                ep["id"],
-                                file_path,
-                            )
-                            found_any = True
-                    
-                    if found_any:
-                        return True
-            logger.warning(
-                "Sonarr: no matching episode found for path '%s'", file_path
+        norm_path = os.path.normpath(file_path).lower()
+        file_name = os.path.basename(norm_path)
+        path_parts = set(norm_path.split(os.sep))
+        ids = external_ids or {}
+        tvdb = str(ids.get("tvdb")) if ids.get("tvdb") else None
+        imdb = str(ids.get("imdb")).lower() if ids.get("imdb") else None
+        for series in series_list:
+            series_path = os.path.normpath(series.get("path", "")).lower()
+            series_leaf = os.path.basename(series_path) if series_path else ""
+            series_matched = (
+                (tvdb and str(series.get("tvdbId")) == tvdb)
+                or (imdb and (series.get("imdbId") or "").lower() == imdb)
+                or (series_path and norm_path.startswith(series_path))
+                or (series_leaf and series_leaf in path_parts)
             )
-            return False
+            if not series_matched:
+                continue
+            series_id = series["id"]
+            file_resp = requests.get(
+                urljoin(self.base_url + "/", f"api/v3/episodefile?seriesId={series_id}"),
+                headers=self.headers, timeout=30,
+            )
+            file_resp.raise_for_status()
+            episode_file_id = None
+            for ep_file in file_resp.json():
+                ep_file_path = os.path.normpath(ep_file.get("path", "")).lower()
+                if ep_file_path == norm_path or os.path.basename(ep_file_path) == file_name:
+                    episode_file_id = ep_file.get("id")
+                    break
+            if not episode_file_id:
+                continue
+            ep_resp = requests.get(
+                urljoin(self.base_url + "/", f"api/v3/episode?seriesId={series_id}"),
+                headers=self.headers, timeout=30,
+            )
+            ep_resp.raise_for_status()
+            eps = [ep for ep in ep_resp.json() if ep.get("episodeFileId") == episode_file_id]
+            if eps:
+                return eps
+        return []
+
+    def set_episode_monitored(self, file_path: str, monitored: bool, external_ids: dict | None = None) -> bool:
+        try:
+            eps = self._find_episodes(file_path, external_ids)
+            if not eps:
+                logger.warning("Sonarr: no matching episode found for path '%s'", file_path)
+                return False
+            for ep in eps:
+                ep["monitored"] = monitored
+                put_resp = requests.put(
+                    urljoin(self.base_url + "/", f"api/v3/episode/{ep['id']}"),
+                    headers=self.headers, json=ep, timeout=30,
+                )
+                put_resp.raise_for_status()
+                logger.info("Sonarr: set monitored=%s for episode id=%s", monitored, ep["id"])
+            return True
         except Exception as exc:
-            logger.error("Sonarr: error unmonitoring episode: %s", exc)
+            logger.error("Sonarr: error setting monitored state: %s", exc)
             return False
+
+    def get_episode_monitored(self, file_path: str, external_ids: dict | None = None) -> bool | None:
+        try:
+            eps = self._find_episodes(file_path, external_ids)
+            return bool(eps[0].get("monitored")) if eps else None
+        except Exception as exc:
+            logger.error("Sonarr: error reading monitored state: %s", exc)
+            return None
 
 
 # ---------------------------------------------------------------------------
@@ -2567,6 +2567,50 @@ class MediaSpektor:
     def stats(self) -> dict[str, Any]:
         return self.db.get_stats()
 
+    def get_item_monitor(self, server_type: str, item_id: str) -> dict[str, Any]:
+        """Report the current *Arr monitored state for an archived item, or why it's
+        unavailable (so the UI can show/hide the toggle)."""
+        rec = self.db.get_item(server_type, item_id)
+        if not rec:
+            return {"available": False, "reason": "Item not found in database."}
+        mtype = rec.get("media_type", "movie")
+        fp = rec.get("original_path")
+        if mtype == "movie":
+            if not self.radarr:
+                return {"available": False, "reason": "Radarr is not configured."}
+            state = self.radarr.get_movie_monitored(fp)
+            arr = "Radarr"
+        else:
+            if not self.sonarr:
+                return {"available": False, "reason": "Sonarr is not configured."}
+            state = self.sonarr.get_episode_monitored(fp)
+            arr = "Sonarr"
+        if state is None:
+            return {"available": False, "reason": f"No matching item found in {arr}."}
+        return {"available": True, "monitored": state, "arr": arr}
+
+    def set_item_monitor(self, server_type: str, item_id: str, monitored: bool) -> dict[str, Any]:
+        """Set the *Arr monitored flag for an archived item. Re-monitoring lets the
+        *Arr fetch the real (larger) file again; unmonitoring stops re-downloads."""
+        rec = self.db.get_item(server_type, item_id)
+        if not rec:
+            return {"success": False, "error": "Item not found in database."}
+        mtype = rec.get("media_type", "movie")
+        fp = rec.get("original_path")
+        if mtype == "movie":
+            if not self.radarr:
+                return {"success": False, "error": "Radarr is not configured."}
+            ok = self.radarr.set_movie_monitored(fp, monitored)
+            arr = "Radarr"
+        else:
+            if not self.sonarr:
+                return {"success": False, "error": "Sonarr is not configured."}
+            ok = self.sonarr.set_episode_monitored(fp, monitored)
+            arr = "Sonarr"
+        if not ok:
+            return {"success": False, "error": f"No matching item found in {arr} (check path/IDs)."}
+        return {"success": True, "monitored": monitored, "arr": arr}
+
     def _replace_with_dummy(
         self, file_path: str, dummy_bytes: bytes, backup_target: str | None = None
     ) -> str | None:
@@ -3123,6 +3167,21 @@ def run_bg_regenerate(server_type: str, item_id: str, target: str):
 def trigger_regenerate(req: RegenerateReq, bg_tasks: BackgroundTasks):
     bg_tasks.add_task(run_bg_regenerate, req.server_type, str(req.item_id), req.target)
     return {"success": True, "message": f"Regeneration ({req.target}) queued as background task."}
+
+
+@app.get("/api/monitor-state", dependencies=[Depends(verify_auth)])
+def get_monitor_state(server_type: str, item_id: str):
+    return get_spektor().get_item_monitor(server_type, str(item_id))
+
+
+class MonitorReq(BaseModel):
+    server_type: str
+    item_id: str | int
+    monitored: bool
+
+@app.post("/api/monitor", dependencies=[Depends(verify_auth)])
+def set_monitor(req: MonitorReq):
+    return get_spektor().set_item_monitor(req.server_type, str(req.item_id), req.monitored)
 
 
 # ---------------------------------------------------------------------------

@@ -5,6 +5,11 @@ All notable changes to **MediaSpektor** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to a simple `v0.x` release line.
 
+## [v1.3.0] - 2026-06-14
+
+### Added
+- **Per-item Radarr/Sonarr monitor toggle.** The confirm/restore modal now shows a *Arr toggle (alongside "Fix Poster"/"Fix Video") that reads the current monitored state and flips it on click — labelled "Re-monitor in *Arr" for archived items (so the *Arr can fetch the full file again) or "Unmonitor in *Arr" when monitored. The button only appears when Radarr/Sonarr is configured and the item is found there. New endpoints: `GET /api/monitor-state`, `POST /api/monitor`. Restore still does not auto-re-monitor — this gives you explicit, per-title control.
+
 ## [v1.2.11] - 2026-06-14
 
 ### Fixed

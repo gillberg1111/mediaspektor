@@ -14,7 +14,7 @@ To visually flag archived items, MediaSpektor synthesizes and uploads a clean tr
 - 🎬 **TMDB ID Bridge** *(optional)*: When servers store different ID systems (e.g. Plex has only IMDB while Jellyfin has only TMDB), an optional TMDB API key normalizes IDs across systems so matching still succeeds. Without a key, matching gracefully falls back to file path + direct ID overlap.
 - 🎥 **Valid Dummy Containers**: Programmatic generation of compliant, non-crashing `.mp4`, `.mkv`, and `.avi` template containers.
 - 🎨 **Poster Badging**: Adds a sleek translucent banner (mint accent) at the bottom of posters detailing reclaimed space using Pillow.
-- 🤖 **\*Arr Integrations**: Automatically unmonitors movies in Radarr and episodes in Sonarr to prevent automatic re-downloads.
+- 🤖 **\*Arr Integrations**: Automatically unmonitors movies in Radarr and episodes in Sonarr to prevent automatic re-downloads. Matching is robust to differing mount roots (by TMDB/IMDB/TVDB id, then path). A per-item **Monitor / Unmonitor toggle** in the dashboard lets you re-monitor a title on demand (e.g. to let the \*Arr fetch the full file again).
 - 🛡️ **Safety & Recovery**: 
   - **Dry-run mode** by default to inspect candidates and potential savings safely.
   - Option to move original media files to cold storage backups.

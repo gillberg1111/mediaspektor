@@ -1347,6 +1347,49 @@ class TestRadarrMatching(unittest.TestCase):
         )
 
 
+class TestMonitorToggle(unittest.TestCase):
+    def setUp(self):
+        self.temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.temp_db.close()
+        self.temp_config = tempfile.NamedTemporaryFile(suffix=".yaml", delete=False)
+        self.temp_config.close()
+        import yaml
+        with open(self.temp_config.name, "w") as f:
+            yaml.safe_dump({"servers": [], "rules": {}, "safety": {"dry_run": True}}, f)
+        self.spektor = MediaSpektor(self.temp_config.name)
+        self.spektor.db = Database(self.temp_db.name)
+        self.spektor.db.insert(
+            server_type="plex", server_item_id="1", title="Movie", media_type="movie",
+            original_path="/data/Movie.mkv", original_size_bytes=10**10, dummy_size_bytes=2048,
+            backup_poster_path=None, backup_media_path=None, status="archived",
+        )
+
+    def tearDown(self):
+        for p in (self.temp_db.name, self.temp_config.name):
+            if os.path.exists(p):
+                os.unlink(p)
+
+    def test_set_monitor_requires_radarr(self):
+        self.spektor.radarr = None
+        res = self.spektor.set_item_monitor("plex", "1", True)
+        self.assertFalse(res["success"])
+        self.assertIn("Radarr", res["error"])
+
+    def test_set_monitor_calls_radarr(self):
+        self.spektor.radarr = MagicMock()
+        self.spektor.radarr.set_movie_monitored.return_value = True
+        res = self.spektor.set_item_monitor("plex", "1", True)
+        self.assertTrue(res["success"])
+        self.spektor.radarr.set_movie_monitored.assert_called_once_with("/data/Movie.mkv", True)
+
+    def test_get_monitor_state(self):
+        self.spektor.radarr = MagicMock()
+        self.spektor.radarr.get_movie_monitored.return_value = False
+        res = self.spektor.get_item_monitor("plex", "1")
+        self.assertTrue(res["available"])
+        self.assertFalse(res["monitored"])
+
+
 class TestLibraryScanScoping(unittest.TestCase):
     """Scans should target the changed item's library/type, not the whole server."""
 

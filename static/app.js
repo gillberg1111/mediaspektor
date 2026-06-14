@@ -625,21 +625,76 @@ document.addEventListener("DOMContentLoaded", () => {
         const execBtn = document.getElementById("btn-confirm-execute");
         const btnRegenPoster = document.getElementById("btn-regenerate-poster");
         const btnRegenVideo = document.getElementById("btn-regenerate-video");
+        const btnMonitor = document.getElementById("btn-monitor-toggle");
 
         if (isRestore) {
             execBtn.className = "btn btn-success";
             execBtn.textContent = "Restore";
             btnRegenPoster.style.display = "inline-flex";
             btnRegenVideo.style.display = "inline-flex";
+            refreshMonitorButton();   // shows the *Arr toggle if available
         } else {
             execBtn.className = "btn btn-danger";
             execBtn.textContent = "Confirm Spektor";
             btnRegenPoster.style.display = "none";
             btnRegenVideo.style.display = "none";
+            btnMonitor.style.display = "none";
         }
-        
+
         openModal(modalConfirm);
     }
+
+    // Query the *Arr monitored state for the pending item and present the toggle.
+    function refreshMonitorButton() {
+        const btn = document.getElementById("btn-monitor-toggle");
+        btn.style.display = "none";
+        if (!pendingAction) return;
+        const { serverType, itemId } = pendingAction;
+        fetch(`/api/monitor-state?server_type=${encodeURIComponent(serverType)}&item_id=${encodeURIComponent(itemId)}`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data || !data.available) return;   // *Arr not configured / no match
+                pendingAction.monitored = data.monitored;
+                btn.dataset.monitored = data.monitored ? "1" : "0";
+                btn.disabled = false;
+                if (data.monitored) {
+                    btn.innerHTML = '<i class="fa-solid fa-bell-slash"></i> Unmonitor in *Arr';
+                } else {
+                    btn.innerHTML = '<i class="fa-solid fa-bell"></i> Re-monitor in *Arr';
+                }
+                btn.style.display = "inline-flex";
+            })
+            .catch(err => console.error("Monitor state fetch failed:", err));
+    }
+
+    window.toggleMonitor = () => {
+        if (!pendingAction) return;
+        const btn = document.getElementById("btn-monitor-toggle");
+        const newState = btn.dataset.monitored !== "1";   // flip current
+        const { serverType, itemId, title } = pendingAction;
+        btn.disabled = true;
+        showToast(`Updating *Arr monitoring for '${title}'...`, "warning");
+        fetch("/api/monitor", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ server_type: serverType, item_id: itemId, monitored: newState })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast(`${newState ? 'Re-monitored' : 'Unmonitored'} in ${data.arr || '*Arr'}.`, "success");
+                refreshMonitorButton();
+            } else {
+                showToast(`Error: ${data.error || 'Failed to update monitoring.'}`, "error");
+                btn.disabled = false;
+            }
+        })
+        .catch(err => {
+            console.error("Monitor toggle failed:", err);
+            showToast("Server error during monitoring update.", "error");
+            btn.disabled = false;
+        });
+    };
 
     // Cancel Confirm Modal
     document.getElementById("btn-confirm-cancel").addEventListener("click", () => {
