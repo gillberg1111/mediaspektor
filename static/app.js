@@ -446,8 +446,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function renderMovies(movies) {
         const sorted = sortItems(movies, movieSort);
+        const container = document.getElementById("movies-grid").parentElement;
         const grid = document.getElementById("movies-grid");
         grid.innerHTML = "";
+
+        // Remove any existing miss summary
+        const existingSumm = container.querySelector(".miss-summary");
+        if (existingSumm) existingSumm.remove();
+
+        // Show missing server summary if any
+        const missed = movies.filter(m => m.missing_servers && m.missing_servers.length);
+        if (missed.length > 0) {
+            const s = document.createElement("div");
+            s.className = "miss-summary";
+            s.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ${missed.length} title${missed.length>1?'s':''} aren't on all your servers <button class="btn btn-secondary btn-xs" onclick="window.openManualMatch()">Manage matches</button>`;
+            container.insertBefore(s, grid);
+        }
 
         if (movies.length === 0) {
             grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 3rem;"><i class="fa-solid fa-circle-info fa-2x"></i><p style="margin-top: 1rem;">No watched movies found matching exclusion criteria.</p></div>';
@@ -457,13 +471,14 @@ document.addEventListener("DOMContentLoaded", () => {
         sorted.forEach(movie => {
             const card = document.createElement("div");
             card.className = "media-card";
-            
+
             // Poster URL proxied through backend
             const posterUrl = `/api/posterproxy?server_type=${movie.server_type}&item_id=${movie.id}&status=${movie.status}`;
             const sizeFormatted = formatBytes(movie.original_size);
-            
+
             card.innerHTML = `
                 <div class="media-badge ${movie.status}">${movie.status.toUpperCase()}</div>
+                ${movie.missing_servers && movie.missing_servers.length ? `<div class="miss-chip" title="Not found on: ${movie.missing_servers.join(', ')}"><i class="fa-solid fa-triangle-exclamation"></i> ${movie.missing_servers.length} server${movie.missing_servers.length>1?'s':''}</div>` : ''}
                 <div class="media-poster-container">
                     <img src="${posterUrl}" class="media-poster" alt="${movie.title}" loading="lazy" decoding="async" onerror="this.src='https://placehold.co/400x600/0E1413/3ECF8E?text=${encodeURIComponent(movie.title)}'">
                 </div>
@@ -476,7 +491,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <span class="watch-dot ${movie.is_watched ? 'watched' : ''}">${movie.is_watched ? 'Watched' : 'Unwatched'}</span>
                 </div>
             `;
-            
+
             // Click to trigger action
             card.addEventListener("click", () => {
                 promptAction(
@@ -537,8 +552,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function renderShows(shows) {
         const sorted = sortItems(shows, showSort);
+        const container = document.getElementById("shows-grid").parentElement;
         const grid = document.getElementById("shows-grid");
         grid.innerHTML = "";
+
+        const existingSumm = container.querySelector(".miss-summary");
+        if (existingSumm) existingSumm.remove();
+
+        const missed = shows.filter(s => s.missing_servers && s.missing_servers.length);
+        if (missed.length > 0) {
+            const s = document.createElement("div");
+            s.className = "miss-summary";
+            s.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ${missed.length} title${missed.length>1?'s':''} aren't on all your servers <button class="btn btn-secondary btn-xs" onclick="window.openManualMatch()">Manage matches</button>`;
+            container.insertBefore(s, grid);
+        }
 
         if (shows.length === 0) {
             grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 3rem;"><i class="fa-solid fa-circle-info fa-2x"></i><p style="margin-top: 1rem;">No TV shows found matching configuration.</p></div>';
@@ -548,13 +575,14 @@ document.addEventListener("DOMContentLoaded", () => {
         sorted.forEach(show => {
             const card = document.createElement("div");
             card.className = "media-card";
-            
+
             const posterUrl = `/api/posterproxy?server_type=${show.server_type}&item_id=${show.id}&status=${show.status || 'original'}`;
-            
+
             card.innerHTML = `
                 <div class="media-poster-container">
                     <img src="${posterUrl}" class="media-poster" alt="${show.title}" loading="lazy" decoding="async" onerror="this.src='https://placehold.co/400x600/0E1413/3ECF8E?text=${encodeURIComponent(show.title)}'">
                 </div>
+                ${show.missing_servers && show.missing_servers.length ? `<div class="miss-chip" title="Not found on: ${show.missing_servers.join(', ')}"><i class="fa-solid fa-triangle-exclamation"></i> ${show.missing_servers.length} server${show.missing_servers.length>1?'s':''}</div>` : ''}
                 <div class="media-info">
                     <div class="media-title" title="${show.title}">${show.title}</div>
                     <div class="media-meta">
@@ -564,7 +592,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <span class="watch-dot ${show.is_watched ? 'watched' : ''}">${show.is_watched ? 'Watched' : 'Unwatched'}</span>
                 </div>
             `;
-            
+
             // Show click handler -> Open Seasons
             card.addEventListener("click", () => {
                 openSeasonsModal(show.server_type, show.id, show.title);
@@ -978,6 +1006,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 document.getElementById("sec-enabled").checked = security.enabled !== undefined ? !!security.enabled : true;
                 document.getElementById("sec-username").value = security.username || "admin";
                 document.getElementById("sec-password").value = security.password || "";
+                loadManualMatches();
             })
             .catch(err => {
                 console.error("Failed to load settings:", err);
@@ -1165,6 +1194,168 @@ document.addEventListener("DOMContentLoaded", () => {
         fetch("/api/fix-rollup", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) })
           .then(r=>r.json()).then(d=> showToast(d.success ? "Fix queued." : ("Error: "+(d.error||"failed")), d.success?"success":"error"))
           .catch(()=> showToast("Server error.", "error"));
+    };
+
+    window.openManualMatch = () => {
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove("active"));
+        const settingsNav = document.querySelector('.nav-item[data-tab="settings"]');
+        if (settingsNav) settingsNav.classList.add("active");
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove("active"));
+        const settingsTab = document.getElementById("tab-settings");
+        if (settingsTab) settingsTab.classList.add("active");
+        const pageTitle = document.getElementById("page-title");
+        if (pageTitle) pageTitle.textContent = "Settings";
+        loadSettings();
+        setTimeout(() => {
+            const section = document.getElementById("manual-match-section");
+            if (section) section.scrollIntoView({behavior: "smooth"});
+        }, 200);
+    };
+
+    // Manual Match section logic
+    const btnMMRefresh = document.getElementById("btn-mm-refresh");
+    if (btnMMRefresh) {
+        btnMMRefresh.addEventListener("click", () => {
+            const mt = document.getElementById("mm-media-type").value;
+            refreshManualMatches(mt);
+        });
+    }
+
+    function refreshManualMatches(mediaType) {
+        const list = document.getElementById("mm-unmatched-list");
+        list.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading…';
+
+        fetch(`/api/match/unmatched?media_type=${mediaType}`)
+            .then(r => r.json())
+            .then(items => {
+                if (items.length === 0) {
+                    list.innerHTML = '<p style="color: var(--text-muted);">All items are present on every enabled server.</p>';
+                } else {
+                    let html = '';
+                    items.forEach(it => {
+                        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid var(--line);">
+                            <span><strong>${it.title}</strong> ${it.year ? '('+it.year+')' : ''}</span>
+                            <span style="color:var(--red);font-size:0.72rem;">Missing: ${it.missing_servers.join(', ')}</span>
+                            <button class="btn btn-primary btn-xs mm-match-btn" data-title="${it.title}" data-year="${it.year || ''}" data-media="${it.media_type}" data-present='${JSON.stringify(it.server_items)}' data-missing='${JSON.stringify(it.missing_servers)}'>Match</button>
+                        </div>`;
+                    });
+                    list.innerHTML = html;
+                    bindMatchButtons();
+                }
+            })
+            .catch(() => list.innerHTML = '<p style="color:var(--danger);">Failed to load.</p>');
+    }
+
+    function bindMatchButtons() {
+        document.querySelectorAll(".mm-match-btn").forEach(btn => {
+            btn.addEventListener("click", function(e) {
+                e.stopPropagation();
+                btn.disabled = true;
+                const title = btn.dataset.title;
+                const year = btn.dataset.year;
+                const mediaType = btn.dataset.media;
+                const present = JSON.parse(btn.dataset.present);
+                const missing = JSON.parse(btn.dataset.missing);
+                openMatchPicker(title, year, mediaType, present, missing);
+            });
+        });
+    }
+
+    function openMatchPicker(title, year, mediaType, present, missing) {
+        const list = document.getElementById("mm-unmatched-list");
+        let html = `<div class="card-glass" style="margin-top:0.5rem;padding:0.8rem;">
+            <strong>Match: ${title}${year ? ' ('+year+')' : ''}</strong>
+            <p style="font-size:0.72rem;color:var(--text-3);">Present on: ${Object.keys(present).join(', ')}. Select the corresponding item on each missing server.</p>`;
+        missing.forEach(mt => {
+            html += `<div style="margin-top:0.5rem;"><strong style="color:var(--text-2);">${mt}:</strong>
+                <div style="display:flex;gap:0.3rem;">
+                    <input type="text" class="form-input mm-search" data-server="${mt}" placeholder="Search on ${mt}…" style="flex:1;">
+                    <div class="mm-results-${mt.replace(/[^a-z]/gi,'')}" style="font-size:0.72rem;color:var(--text-2);"></div>
+                </div></div>`;
+        });
+        html += `<div style="margin-top:0.6rem;display:flex;gap:0.5rem;">
+            <button class="btn btn-primary btn-xs" id="mm-confirm-btn" disabled><i class="fa-solid fa-link"></i> Link</button>
+            <button class="btn btn-secondary btn-xs mm-cancel-btn">Cancel</button></div></div>`;
+        list.innerHTML = html;
+
+        // Attach cancel
+        list.querySelector(".mm-cancel-btn").addEventListener("click", () => refreshManualMatches(mediaType));
+
+        // Live search on each missing server
+        const picked = {};
+        list.querySelectorAll(".mm-search").forEach(inp => {
+            inp.addEventListener("input", function() {
+                const server = inp.dataset.server;
+                const q = inp.value;
+                if (q.length < 2) return;
+                fetch(`/api/match/candidates?server_type=${server}&media_type=${mediaType}&q=${encodeURIComponent(q)}`)
+                    .then(r => r.json())
+                    .then(results => {
+                        const resDiv = list.querySelector(`.mm-results-${server.replace(/[^a-z]/gi,'')}`);
+                        let rh = results.map(r => `<div style="cursor:pointer;padding:0.2rem 0;" data-id="${r.id}" data-title="${r.title}" class="mm-candidate">${r.title} ${r.year ? '('+r.year+')' : ''}</div>`).join('');
+                        resDiv.innerHTML = rh;
+                        resDiv.querySelectorAll(".mm-candidate").forEach(d => {
+                            d.addEventListener("click", () => {
+                                picked[server] = {server_type: server, item_id: d.dataset.id, title: d.dataset.title};
+                                inp.value = d.dataset.title;
+                                resDiv.innerHTML = '<span style="color:var(--accent);">Picked</span>';
+                                // Enable confirm if all missing are picked
+                                const missingArr = JSON.parse(JSON.stringify(missing));
+                                const allPicked = missingArr.every(m => picked[m]);
+                                const btn = document.getElementById("mm-confirm-btn");
+                                if (btn) btn.disabled = !allPicked;
+                            });
+                        });
+                    });
+            });
+        });
+
+        document.getElementById("mm-confirm-btn").addEventListener("click", () => {
+            const members = Object.entries(present).map(([st, iid]) => ({server_type: st, item_id: iid, title: title}));
+            Object.values(picked).forEach(p => members.push(p));
+            fetch("/api/match", {
+                method: "POST", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({media_type: mediaType, members: members})
+            }).then(r => r.json()).then(d => {
+                showToast(d.success ? "Match created." : ("Error: " + (d.error || "failed")), d.success ? "success" : "error");
+                refreshManualMatches(mediaType);
+            }).catch(() => showToast("Server error.", "error"));
+        });
+    }
+
+    function loadManualMatches() {
+        fetch("/api/match/list")
+            .then(r => r.json())
+            .then(matches => {
+                const list = document.getElementById("mm-existing-list");
+                if (!matches.length) {
+                    list.innerHTML = '<p style="color: var(--text-muted);">No manual matches yet.</p>';
+                    return;
+                }
+                const groups = {};
+                matches.forEach(m => {
+                    (groups[m.group_id] = groups[m.group_id] || []).push(m);
+                });
+                let html = '';
+                Object.entries(groups).forEach(([gid, members]) => {
+                    const titles = members.map(m => `<span>${m.title || m.item_id} (${m.server_type})</span>`).join(', ');
+                    html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid var(--line);">
+                        <span style="font-size:0.82rem;">${titles}</span>
+                        <button class="btn btn-danger btn-xs" onclick="window.unlinkMatch('${gid}')"><i class="fa-solid fa-unlink"></i> Unlink</button>
+                    </div>`;
+                });
+                list.innerHTML = html;
+            });
+    }
+
+    window.unlinkMatch = (gid) => {
+        fetch("/api/match/remove", {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({group_id: gid})
+        }).then(r => r.json()).then(d => {
+            showToast(d.success ? "Match removed." : "Error", d.success ? "success" : "error");
+            loadManualMatches();
+        });
     };
 
     // -----------------------------------------------------------------------

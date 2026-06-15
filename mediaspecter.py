@@ -547,6 +547,16 @@ class Database:
                     PRIMARY KEY (server_type, item_id)
                 )"""
             )
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS manual_matches (
+                    group_id    TEXT NOT NULL,
+                    media_type  TEXT NOT NULL,
+                    server_type TEXT NOT NULL,
+                    item_id     TEXT NOT NULL,
+                    title       TEXT,
+                    PRIMARY KEY (server_type, item_id)
+                )"""
+            )
             conn.commit()
         finally:
             conn.close()
@@ -671,6 +681,71 @@ class Database:
                     (original_path,),
                 ).fetchall()
             return [dict(row) for row in rows]
+        finally:
+            conn.close()
+
+    def link_manual_match(self, media_type, members):
+        import uuid
+        conn = sqlite3.connect(self.db_path)
+        try:
+            gid = None
+            for st, iid, _ in members:
+                row = conn.execute(
+                    "SELECT group_id FROM manual_matches WHERE server_type=? AND item_id=?",
+                    (st, str(iid))
+                ).fetchone()
+                if row:
+                    gid = row[0]
+                    break
+            gid = gid or str(uuid.uuid4())
+            for st, iid, title in members:
+                conn.execute(
+                    "INSERT OR REPLACE INTO manual_matches (group_id, media_type, server_type, item_id, title) VALUES (?,?,?,?,?)",
+                    (gid, media_type, st, str(iid), title)
+                )
+            conn.commit()
+            return gid
+        finally:
+            conn.close()
+
+    def get_manual_group_members(self, server_type, item_id):
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT group_id FROM manual_matches WHERE server_type=? AND item_id=?",
+                (server_type, str(item_id))
+            ).fetchone()
+            if not row:
+                return []
+            rows = conn.execute(
+                "SELECT * FROM manual_matches WHERE group_id=?",
+                (row["group_id"],)
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    def get_manual_match_target(self, source_server, source_id, target_server):
+        for m in self.get_manual_group_members(source_server, source_id):
+            if m["server_type"] == target_server:
+                return m["item_id"]
+        return None
+
+    def list_manual_matches(self):
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("SELECT * FROM manual_matches ORDER BY group_id").fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    def remove_manual_group(self, group_id):
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.execute("DELETE FROM manual_matches WHERE group_id=?", (group_id,))
+            conn.commit()
         finally:
             conn.close()
 
@@ -3096,7 +3171,14 @@ class MediaSpecter:
             # causing 404/400/500 on the poster API.
             targets: list[dict[str, Any]] = []
             for server in self.servers:
-                target = item if server is source else server.find_item(file_path, expanded_ids, media_type)
+                if server is source:
+                    target = item
+                else:
+                    manual_id = self.db.get_manual_match_target(server_type, item_id, server.server_type)
+                    if manual_id:
+                        target = server.get_item_metadata(str(manual_id))
+                    else:
+                        target = server.find_item(file_path, expanded_ids, media_type)
                 if target is None:
                     if server is not source:
                         logger.warning("No %s match for '%s' — skipping poster", server.server_type, title)
@@ -3445,12 +3527,20 @@ def get_web_stats():
 def get_web_logs():
     return list(memory_log_handler.logs)
 
+def _attach_presence(specter, items, enabled, media_type):
+    for it in items:
+        si = it.setdefault("server_items", {it.get("server_type"): it.get("id")})
+        for st, iid in list(si.items()):
+            for m in specter.db.get_manual_group_members(st, iid):
+                si.setdefault(m["server_type"], m["item_id"])
+        present = sorted(k for k in si.keys() if k in enabled)
+        it["present_servers"] = present
+        it["missing_servers"] = sorted(s for s in enabled if s not in present) if len(enabled) > 1 else []
+
 @app.get("/api/movies", dependencies=[Depends(verify_auth)])
 def get_web_movies():
     specter = get_specter()
-    # Dedupe the same physical movie across servers sharing one library.
-    # Key on file_path (servers mount the library at the same path), falling
-    # back to title+year. Keep one card; prefer one already shown as archived.
+    enabled = [s.server_type for s in specter.servers]
     by_key: dict[str, dict] = {}
     order: list[str] = []
     for server in specter.servers:
@@ -3462,23 +3552,25 @@ def get_web_movies():
             key = m.get("file_path") or f"{m.get('title', '')}|{m.get('year', '')}"
             existing = by_key.get(key)
             if existing is None:
+                m["server_items"] = {server.server_type: m["id"]}
                 by_key[key] = m
                 order.append(key)
-            elif existing["status"] != "archived" and m["status"] == "archived":
-                by_key[key] = m
-    return [by_key[k] for k in order]
+            else:
+                existing.setdefault("server_items", {})[server.server_type] = m["id"]
+                if existing["status"] != "archived" and m["status"] == "archived":
+                    si = existing["server_items"]
+                    m["server_items"] = si
+                    by_key[key] = m
+    result = [by_key[k] for k in order]
+    _attach_presence(specter, result, enabled, "movie")
+    return result
 
 @app.get("/api/shows", dependencies=[Depends(verify_auth)])
 def get_web_shows():
     specter = get_specter()
-    # Dedupe the same series across servers. Shows have no shared file path, and
-    # servers report different titles ("FROM"/"From", "The Office"/"The Office (US)",
-    # "Stargirl"/"DC's Stargirl"). Match by external ID first (TVDB->IMDB->TMDB),
-    # then by normalized title + year. The first server to report a show owns the
-    # canonical card (drilling in / total_size use that server; episode archival
-    # still propagates across servers by path).
-    canon: list[dict] = []          # canonical show dicts, in first-seen order
-    id_index: dict[str, int] = {}   # "system:id" -> index into canon
+    enabled = [s.server_type for s in specter.servers]
+    canon: list[dict] = []
+    id_index: dict[str, int] = {}
     for server in specter.servers:
         libs = server.config.get("libraries", [])
         for s in server.get_shows(libs):
@@ -3504,12 +3596,14 @@ def get_web_shows():
                     if ids.get(sys) and not cids.get(sys):
                         cids[sys] = ids[sys]
                 c["external_ids"] = cids
+                c.setdefault("server_items", {c.get("server_type"): c.get("id")})[server.server_type] = s["id"]
                 for k in id_keys:
                     id_index.setdefault(k, idx)
                 continue
 
             # New canonical show
             new_idx = len(canon)
+            s.setdefault("server_items", {})[server.server_type] = s["id"]
             canon.append(s)
             for k in id_keys:
                 id_index[k] = new_idx
@@ -3520,6 +3614,7 @@ def get_web_shows():
                 except Exception:
                     _SHOW_SIZE_CACHE[cache_key] = 0
             s["total_size"] = _SHOW_SIZE_CACHE[cache_key]
+    _attach_presence(specter, canon, enabled, "series")
     return canon
 
 @app.get("/api/shows/{server_type}/{show_id}/seasons", dependencies=[Depends(verify_auth)])
@@ -3698,6 +3793,59 @@ class MonitorReq(BaseModel):
 @app.post("/api/monitor", dependencies=[Depends(verify_auth)])
 def set_monitor(req: MonitorReq):
     return get_specter().set_item_monitor(req.server_type, str(req.item_id), req.monitored)
+
+
+# ---------------------------------------------------------------------------
+# Manual Match endpoints
+# ---------------------------------------------------------------------------
+@app.get("/api/match/unmatched", dependencies=[Depends(verify_auth)])
+def match_unmatched(media_type: str = "movie"):
+    specter = get_specter()
+    items = get_web_movies() if media_type == "movie" else get_web_shows()
+    return [
+        {"title": it.get("title"), "year": it.get("year"), "media_type": media_type,
+         "server_items": it.get("server_items", {}), "present_servers": it.get("present_servers", []),
+         "missing_servers": it.get("missing_servers", [])}
+        for it in items if it.get("missing_servers")
+    ]
+
+@app.get("/api/match/candidates", dependencies=[Depends(verify_auth)])
+def match_candidates(server_type: str, media_type: str, q: str = ""):
+    specter = get_specter()
+    server = next((s for s in specter.servers if s.server_type == server_type), None)
+    if not server:
+        raise HTTPException(404, "Server not active")
+    libs = server.config.get("libraries", [])
+    raw = server.get_movies(libs) if media_type == "movie" else server.get_shows(libs)
+    ql = q.lower().strip()
+    out = [{"id": x["id"], "title": x.get("title"), "year": x.get("year")} for x in raw
+           if not ql or ql in (x.get("title") or "").lower()]
+    return out[:50]
+
+class ManualMatchReq(BaseModel):
+    media_type: str
+    members: list[dict]
+
+@app.post("/api/match", dependencies=[Depends(verify_auth)])
+def create_manual_match(req: ManualMatchReq):
+    specter = get_specter()
+    members = [(m["server_type"], str(m["item_id"]), m.get("title")) for m in req.members]
+    if len(members) < 2:
+        raise HTTPException(400, "Need at least two items to link.")
+    gid = specter.db.link_manual_match(req.media_type, members)
+    return {"success": True, "group_id": gid}
+
+@app.get("/api/match/list", dependencies=[Depends(verify_auth)])
+def list_manual():
+    return get_specter().db.list_manual_matches()
+
+class UnmatchReq(BaseModel):
+    group_id: str
+
+@app.post("/api/match/remove", dependencies=[Depends(verify_auth)])
+def remove_manual(req: UnmatchReq):
+    get_specter().db.remove_manual_group(req.group_id)
+    return {"success": True}
 
 
 # ---------------------------------------------------------------------------

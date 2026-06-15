@@ -121,7 +121,7 @@
                     </div>
                 </div>
                 <div class="version-footer">
-                    MediaSpecter v2.1.1
+                    MediaSpecter v2.2.0
                 </div>
             </section>
 
@@ -140,7 +140,7 @@
                     <!-- Cards injected here -->
                 </div>
                 <div class="version-footer">
-                    MediaSpecter v2.1.1
+                    MediaSpecter v2.2.0
                 </div>
             </section>
 
@@ -159,7 +159,7 @@
                     <!-- Cards injected here -->
                 </div>
                 <div class="version-footer">
-                    MediaSpecter v2.1.1
+                    MediaSpecter v2.2.0
                 </div>
             </section>
 
@@ -459,13 +459,45 @@
                         </div>
                     </div>
 
+                    <!-- Section: Manual Match -->
+                    <div class="panel settings-section" id="manual-match-section" style="margin-bottom: 2rem;">
+                        <div class="panel-header">
+                            <h3><i class="fa-solid fa-link"></i> Manual Match</h3>
+                        </div>
+                        <div class="panel-body">
+                            <div class="card-glass settings-card-group" style="grid-column: 1/-1;">
+                                <div class="group-header">
+                                    <h4>Unmatched Items</h4>
+                                    <div style="display:flex; gap:0.5rem;">
+                                        <select id="mm-media-type" class="form-input" style="width:auto;">
+                                            <option value="movie">Movies</option>
+                                            <option value="series">TV Shows</option>
+                                        </select>
+                                        <button type="button" id="btn-mm-refresh" class="btn btn-secondary btn-xs"><i class="fa-solid fa-rotate"></i> Refresh</button>
+                                    </div>
+                                </div>
+                                <div id="mm-unmatched-list" style="font-size:0.82rem; color: var(--text-2);">
+                                    <p style="color: var(--text-muted);">Click Refresh to load unmatched items.</p>
+                                </div>
+                            </div>
+                            <div class="card-glass settings-card-group" style="grid-column: 1/-1; margin-top: 1rem;">
+                                <div class="group-header">
+                                    <h4>Existing Matches</h4>
+                                </div>
+                                <div id="mm-existing-list" style="font-size:0.82rem; color: var(--text-2);">
+                                    <p style="color: var(--text-muted);">Loading…</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Save Actions -->
                     <div class="form-actions-panel">
                         <button type="button" id="btn-save-settings" class="btn btn-primary btn-lg"><i class="fa-solid fa-floppy-disk"></i> Save Settings Configuration</button>
                     </div>
                 </form>
                 <div class="version-footer">
-                    MediaSpecter v2.1.1
+                    MediaSpecter v2.2.0
                 </div>
             </section>
         </main>

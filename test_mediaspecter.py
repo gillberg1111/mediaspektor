@@ -1966,5 +1966,175 @@ class TestPhase2(unittest.TestCase):
         mock.upload_poster.assert_called_with("sea1", str(overlay_path))
 
 
+class TestManualMatches(unittest.TestCase):
+    def setUp(self):
+        self.temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.temp_db.close()
+        self.temp_config = tempfile.NamedTemporaryFile(suffix=".yaml", delete=False)
+        self.temp_config.close()
+        import yaml
+        with open(self.temp_config.name, "w") as f:
+            yaml.safe_dump({"servers": [], "rules": {}, "safety": {"dry_run": True}}, f)
+        self.specter = MediaSpecter(self.temp_config.name)
+        self.specter.db = Database(self.temp_db.name)
+
+    def tearDown(self):
+        for p in (self.temp_db.name, self.temp_config.name):
+            if os.path.exists(p):
+                os.unlink(p)
+
+    def test_link_manual_match_creates_group(self):
+        db = self.specter.db
+        gid = db.link_manual_match("movie", [("plex", "1", "A"), ("jellyfin", "2", "B")])
+        self.assertIsNotNone(gid)
+        members = db.get_manual_group_members("plex", "1")
+        self.assertEqual(len(members), 2)
+        self.assertEqual(db.get_manual_match_target("plex", "1", "jellyfin"), "2")
+        self.assertEqual(db.get_manual_match_target("jellyfin", "2", "plex"), "1")
+
+    def test_link_manual_match_merge_groups(self):
+        db = self.specter.db
+        gid1 = db.link_manual_match("movie", [("plex", "1", "A"), ("jellyfin", "2", "B")])
+        gid2 = db.link_manual_match("movie", [("jellyfin", "2", "B"), ("emby", "3", "C")])
+        self.assertEqual(gid1, gid2)
+        members = db.get_manual_group_members("plex", "1")
+        self.assertEqual(len(members), 3)
+
+    def test_remove_manual_group(self):
+        db = self.specter.db
+        gid = db.link_manual_match("movie", [("plex", "1", "A"), ("jellyfin", "2", "B")])
+        db.remove_manual_group(gid)
+        self.assertEqual(db.get_manual_match_target("plex", "1", "jellyfin"), None)
+
+    def test_attach_presence_single_server_no_missing(self):
+        from mediaspecter import _attach_presence
+        items = [{"server_type": "plex", "id": "1", "server_items": {"plex": "1"}}]
+        _attach_presence(self.specter, items, ["plex"], "movie")
+        self.assertEqual(items[0]["present_servers"], ["plex"])
+        self.assertEqual(items[0]["missing_servers"], [])
+
+    def test_movies_endpoint_missing_servers(self):
+        self.config_data = {
+            "servers": [
+                {"type": "plex", "enabled": True, "url": "http://p", "token": "t", "libraries": ["Movies"]},
+                {"type": "jellyfin", "enabled": True, "url": "http://j", "username": "u", "password": "p", "libraries": ["Movies"]},
+            ],
+            "rules": {}, "safety": {"dry_run": True}, "integrations": {},
+        }
+        import yaml
+        with open(self.temp_config.name, "w") as f:
+            yaml.safe_dump(self.config_data, f)
+        specter = MediaSpecter(self.temp_config.name)
+        specter.db = self.specter.db
+
+        mock_plex = MagicMock()
+        mock_plex.server_type = "plex"
+        mock_plex.config = {"libraries": ["Movies"]}
+        mock_plex.get_movies.return_value = [
+            {"id": "m1", "title": "OnlyOnPlex", "year": 2020, "file_path": "/m/m1.mkv", "original_size": 1000}
+        ]
+        mock_jf = MagicMock()
+        mock_jf.server_type = "jellyfin"
+        mock_jf.config = {"libraries": ["Movies"]}
+        mock_jf.get_movies.return_value = []
+        specter.servers = [mock_plex, mock_jf]
+
+        import mediaspecter
+        old = mediaspecter.GLOBAL_SPECTER
+        mediaspecter.GLOBAL_SPECTER = specter
+        try:
+            from fastapi.testclient import TestClient
+            from mediaspecter import app
+            client = TestClient(app)
+            resp = client.get("/api/movies")
+            movies = resp.json()
+            if movies:
+                self.assertIn("server_items", movies[0])
+                self.assertIn("missing_servers", movies[0])
+                self.assertIn("jellyfin", movies[0]["missing_servers"])
+        finally:
+            mediaspecter.GLOBAL_SPECTER = old
+
+    def test_manual_match_folds_presence(self):
+        db = self.specter.db
+        db.link_manual_match("movie", [("plex", "m1", "A"), ("jellyfin", "m99", "B")])
+
+        self.config_data = {
+            "servers": [
+                {"type": "plex", "enabled": True, "url": "http://p", "token": "t", "libraries": ["Movies"]},
+                {"type": "jellyfin", "enabled": True, "url": "http://j", "username": "u", "password": "p", "libraries": ["Movies"]},
+            ],
+            "rules": {}, "safety": {"dry_run": True}, "integrations": {},
+        }
+        import yaml
+        with open(self.temp_config.name, "w") as f:
+            yaml.safe_dump(self.config_data, f)
+        specter = MediaSpecter(self.temp_config.name)
+        specter.db = db
+
+        mock_plex = MagicMock()
+        mock_plex.server_type = "plex"
+        mock_plex.config = {"libraries": ["Movies"]}
+        mock_plex.get_movies.return_value = [
+            {"id": "m1", "title": "A", "year": 2020, "file_path": "/m/m1.mkv", "original_size": 1000}
+        ]
+        mock_jf = MagicMock()
+        mock_jf.server_type = "jellyfin"
+        mock_jf.config = {"libraries": ["Movies"]}
+        mock_jf.get_movies.return_value = []
+        specter.servers = [mock_plex, mock_jf]
+
+        import mediaspecter
+        old = mediaspecter.GLOBAL_SPECTER
+        mediaspecter.GLOBAL_SPECTER = specter
+        try:
+            from fastapi.testclient import TestClient
+            from mediaspecter import app
+            client = TestClient(app)
+            resp = client.get("/api/movies")
+            movies = resp.json()
+            if movies:
+                self.assertEqual(movies[0]["missing_servers"], [])
+        finally:
+            mediaspecter.GLOBAL_SPECTER = old
+
+    def test_archive_item_uses_manual_match(self):
+        db = self.specter.db
+        self.specter.config.setdefault("safety", {})["dry_run"] = False
+        self.specter.config.setdefault("safety", {})["allow_automated_archival"] = True
+
+        mock_plex = MagicMock()
+        mock_plex.server_type = "plex"
+        mock_plex.config = {"libraries": ["Movies"]}
+        mock_plex.get_item_metadata.return_value = {
+            "id": "m1", "title": "A", "type": "movie", "file_path": "/m/m1.mkv",
+            "original_size": 1000, "external_ids": {}
+        }
+        mock_jf = MagicMock()
+        mock_jf.server_type = "jellyfin"
+        mock_jf.config = {"libraries": ["Movies"]}
+        mock_jf.find_item.return_value = None  # auto-match fails
+        mock_jf.get_item_metadata.return_value = {
+            "id": "m99", "title": "A", "type": "movie", "file_path": "/m/m99.mkv",
+            "original_size": 1000
+        }
+        mock_jf.download_poster.return_value = True
+        mock_jf.upload_poster.return_value = True
+        self.specter.servers = [mock_plex, mock_jf]
+
+        db.link_manual_match("movie", [("plex", "m1", "A"), ("jellyfin", "m99", "B")])
+
+        self.specter.overlay.apply_overlay = MagicMock(return_value=True)
+        with patch("mediaspecter.os.path.exists", return_value=True), \
+             patch("mediaspecter.shutil.copy2"), \
+             patch("mediaspecter.DUMMY_VIDEOS", {".mkv": base64.b64encode(b"d" * 100).decode()}), \
+             patch("mediaspecter.MediaSpecter._expand_external_ids", return_value={}), \
+             patch("mediaspecter.MediaSpecter._replace_with_dummy", return_value=None), \
+             patch("mediaspecter.MediaSpecter._new_poster_tmp", return_value="/tmp/test_poster.jpg"):
+            res = self.specter.archive_item("plex", "m1")
+            self.assertTrue(res.get("success"))
+            mock_jf.get_item_metadata.assert_called_with("m99")
+
+
 if __name__ == "__main__":
     unittest.main()

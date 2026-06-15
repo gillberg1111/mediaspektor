@@ -469,6 +469,14 @@ body {
 .watch-dot::before { content:""; width:7px; height:7px; border-radius:50%; background: var(--text-4); }
 .watch-dot.watched { color: var(--accent); }
 .watch-dot.watched::before { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.miss-chip { position:absolute; top:0.5rem; left:0.5rem; z-index:2; display:inline-flex; gap:0.3rem;
+    align-items:center; font-size:0.64rem; font-weight:600; padding:0.2rem 0.45rem; border-radius:999px;
+    background: rgba(229,100,91,0.18); color: var(--red); border:1px solid rgba(229,100,91,0.4);
+    -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
+.miss-summary { display:flex; align-items:center; gap:0.75rem; font-size:0.82rem; color: var(--red);
+    margin-bottom:1rem; padding:0.6rem 1rem; border-radius:var(--radius-sm);
+    background: rgba(229,100,91,0.08); border:1px solid rgba(229,100,91,0.25); }
+.miss-summary button { margin-left:auto; }
 
 /* --------------------------------------------------------------------------
    Settings

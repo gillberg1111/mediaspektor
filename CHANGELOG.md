@@ -5,6 +5,11 @@ All notable changes to **MediaSpecter** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to a simple `v0.x` release line.
 
+## [v2.2.0] - 2026-06-15
+
+### Added
+- **Cross-server "not found on all servers" warning + manual match (issue #10).** With multiple servers enabled, Movies and TV Shows now flag any title that's present on some servers but missing from others (a warning chip on the card + a header summary). A new **Manual Match** section in Settings (reached from the summary button) lets you search the missing server and link the items; the link is stored as a canonical group and consulted **before** the automatic path/ID/title matchers, so archiving then propagates to the manually-matched server. Single-server setups never see warnings.
+
 ## [v2.1.1] - 2026-06-15
 
 ### Fixed
