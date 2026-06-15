@@ -1946,6 +1946,13 @@ class TestPhase2(unittest.TestCase):
         )
         self.specter.db.add_rollup_badge("plex", "sea1", "season", "/backups/old.jpg")
 
+        # The force path re-uploads the EXISTING overlay, which must be on disk at
+        # the path the code derives (sanitized server_type + item_id). Create it so
+        # the test is deterministic regardless of run order / shared backup dir.
+        overlay_path = self.specter.backup_dir / "plex_sea1_season_overlay.jpg"
+        overlay_path.parent.mkdir(parents=True, exist_ok=True)
+        overlay_path.write_text("fake-overlay")
+
         self.specter.overlay.apply_overlay = MagicMock(return_value=True)
         self.specter.sonarr = MagicMock()
         self.specter.sonarr.find_series.return_value = {"id": 10, "status": "ended"}
@@ -1954,10 +1961,9 @@ class TestPhase2(unittest.TestCase):
             {"seasonNumber": 1, "airDateUtc": past},
         ]
 
-        with patch("mediaspecter.shutil.copy2"), patch("os.path.exists", return_value=True):
-            res = self.specter.fix_rollup("plex", "s1", only_season=1)
+        res = self.specter.fix_rollup("plex", "s1", only_season=1)
         self.assertIn("plex:season:sea1", res["badged"])
-        mock.upload_poster.assert_called()
+        mock.upload_poster.assert_called_with("sea1", str(overlay_path))
 
 
 if __name__ == "__main__":

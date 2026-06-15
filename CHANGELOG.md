@@ -5,6 +5,11 @@ All notable changes to **MediaSpecter** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to a simple `v0.x` release line.
 
+## [v2.1.1] - 2026-06-15
+
+### Fixed
+- CI: a non-deterministic test (`test_fix_rollup_force_reupload`) patched the wrong `exists()` and relied on shared temp-dir state, so it passed under pytest but failed under `unittest discover` in CI — which blocked the v2.1.0 image from publishing. The test now creates the overlay file it asserts on, making it order-independent. No app behavior change from v2.1.0.
+
 ## [v2.1.0] - 2026-06-14
 
 ### Added
